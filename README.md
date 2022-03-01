@@ -14,7 +14,7 @@ A simple wrapper of the phonopy irreps module for finding irreduciple representa
 
 - Step 2:
 
-  Make a python script with the cotent similar to below.
+  Make a python script with the content similar to below and run it. 
 
   
 
@@ -25,7 +25,7 @@ def show_phbst_irreps():
     irr = IrRepsAnaddb(
         phbst_fname="run_PHBST.nc",
         ind_q=0,
-        symprec=1e-8,
+        symprec=1e-5,
         degeneracy_tolerance=1e-4)
     irr.run()
     irr._show(True)
