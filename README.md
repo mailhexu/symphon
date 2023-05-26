@@ -1,5 +1,5 @@
 # anaddb_irreps
-A simple wrapper of the phonopy irreps module for finding irreduciple representations of the phonon modes in anaddb output
+A simple wrapper of the phonopy irreps module for finding irreduciple representations of the phonon modes in anaddb output.
 
 ## Installation
 ```
@@ -10,7 +10,7 @@ A simple wrapper of the phonopy irreps module for finding irreduciple representa
 
 - Step 1:
 
-  Run anaddb to the phbst file with phonon frequencies and eigen vectors inside. See for example in the examples/MoS2_1T/anaddb_input directory. 
+  Run anaddb to get the phbst file with phonon frequencies and eigen vectors inside. See for example in the examples/MoS2_1T/anaddb_input directory. 
 
 - Step 2:
 
@@ -37,7 +37,8 @@ The parameters in the functions:
 
  *      phbst_fname: name of phbst file.
  *      ind_q: index of the q point in the phbst.
- *     is_little_cogroup: 
- *     symprec: precision for deciding the symmetry of the atomic structure.
- *     degeneracy_tolenrance: the tolerance of frequency difference in deciding the degeneracy.
- *    log_level: how much information is in the output. 
+ *      is_little_cogroup: 
+ *      symprec: precision for deciding the symmetry of the atomic structure.
+ *      degeneracy_tolenrance: the tolerance of frequency difference in deciding the degeneracy.
+ *      log_level: how much information is in the output. 
+

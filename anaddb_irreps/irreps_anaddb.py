@@ -5,6 +5,7 @@ from phonopy.structure.symmetry import Symmetry
 from phonopy.phonon.character_table import character_table
 from anaddb_irreps.abipy_io import read_phbst_freqs_and_eigvecs, ase_atoms_to_phonopy_atoms
 from phonopy.phonon.degeneracy import degenerate_sets as get_degenerate_sets
+from phonopy.structure.cells import is_primitive_cell
 
 
 class IrRepsEigen(IrReps):
@@ -36,12 +37,17 @@ class IrRepsEigen(IrReps):
         self._symmetry_dataset = Symmetry(self._primitive,
                                           symprec=self._symprec).get_dataset()
 
-        if not self._is_primitive_cell():
-            print('')
-            print("Non-primitve cell is used.")
-            print("Your unit cell may be transformed to a primitive cell "
-                  "by PRIMITIVE_AXIS tag.")
-            return False
+        # if not self._is_primitive_cell():
+        #    print('')
+        #    print("Non-primitve cell is used.")
+        #    print("Your unit cell may be transformed to a primitive cell "
+        #          "by PRIMITIVE_AXIS tag.")
+        #    return False
+        if not is_primitive_cell(self._symmetry_dataset["rotations"]):
+            raise RuntimeError(
+                "Non-primitve cell is used. Your unit cell may be transformed to "
+                "a primitive cell by PRIMITIVE_AXIS tag."
+            )
 
         (self._rotations_at_q,
          self._translations_at_q) = self._get_rotations_at_q()

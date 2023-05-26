@@ -6,7 +6,7 @@ __version__ = "0.1"
 long_description = """anaddb_irreps: use phonopy to find the irreducible representations of the phonon modes from anaddb output. It is a simple wrapper of the Phonopy irreps module."""
 
 setup(
-    name='anaddb_irrep',
+    name='anaddb_irreps',
     version=__version__,
     description='anaddb_irreps: use phonopy to find the irreducible representations of the phonon modes from anaddb output.',
     long_description=long_description,
