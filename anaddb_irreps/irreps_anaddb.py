@@ -74,7 +74,7 @@ class IrRepsEigen(IrReps):
                 self._ir_labels = self._get_ir_labels()
                 self._RamanIR_labels = self._get_infrared_raman()
                 IR_labels, Ram_labels = self._RamanIR_labels
-                print ("IR labels ", IR_labels)
+                print ("IR  labels ", IR_labels)
                 print ("Ram labels ", Ram_labels)
             elif (abs(self._q) < self._symprec).all():
                 if self._log_level > 0:
