@@ -1,6 +1,6 @@
 import numpy as np
 from ase import Atoms
-from phonopy.phonon.irreps import IrReps
+from phonopy.phonon.irreps import IrReps, IrRepLabels
 from phonopy.structure.symmetry import Symmetry
 from phonopy.phonon.character_table import character_table
 from anaddb_irreps.abipy_io import read_phbst_freqs_and_eigvecs, ase_atoms_to_phonopy_atoms
@@ -8,11 +8,11 @@ from phonopy.phonon.degeneracy import degenerate_sets as get_degenerate_sets
 from phonopy.structure.cells import is_primitive_cell
 
 
-class IrRepsEigen(IrReps):
+class IrRepsEigen(IrReps,IrRepLabels):
     def __init__(
             self,
             primitive_atoms,
-            q,
+            qpoint,
             freqs,
             eigvecs,
             is_little_cogroup=False,
@@ -23,15 +23,16 @@ class IrRepsEigen(IrReps):
         # self._nac_q_direction = nac_q_direction
         self._log_level = log_level
 
-        self._q = np.array(q)
+        self._qpoint = np.array(qpoint)
         self._degeneracy_tolerance = degeneracy_tolerance
         self._symprec = symprec
         self._primitive = primitive_atoms
         # self._primitive = dynamical_matrix.get_primitive()
         # self._dynamical_matrix = dynamical_matrix
         # self._ddm = DerivativeOfDynamicalMatrix(dynamical_matrix)
-        self._freqs, self._eigvecs = freqs, eigvecs
+        self._freqs, self._eig_vecs = freqs, eigvecs
         self._character_table = None
+        self._verbose = False
 
     def run(self):
         self._symmetry_dataset = Symmetry(self._primitive,
@@ -55,8 +56,10 @@ class IrRepsEigen(IrReps):
 
         self._g = len(self._rotations_at_q)
 
-        (self._pointgroup_symbol, self._transformation_matrix,
-         self._conventional_rotations) = self._get_conventional_rotations()
+        self._pointgroup_symbol = self._symmetry_dataset.pointgroup                                                                                                                                 
+
+        (self._transformation_matrix,
+         self._conventional_rotations,) = self._get_conventional_rotations()
 
         self._ground_matrices = self._get_ground_matrix()
         self._degenerate_sets = self._get_degenerate_sets()
@@ -67,16 +70,17 @@ class IrRepsEigen(IrReps):
 
         if (self._pointgroup_symbol in character_table.keys()
                 and character_table[self._pointgroup_symbol] is not None):
-            self._rotation_symbols = self._get_rotation_symbols()
+            self._rotation_symbols, character_table_of_ptg = self._get_rotation_symbols(self._pointgroup_symbol)
+            self._character_table = character_table_of_ptg
             #print (" char tab ", self._character_table)
 
-            if (abs(self._q) < self._symprec).all() and self._rotation_symbols:
-                self._ir_labels = self._get_ir_labels()
+            if (abs(self._qpoint) < self._symprec).all() and self._rotation_symbols:
+                self._ir_labels = self._get_irrep_labels(character_table_of_ptg)
                 self._RamanIR_labels = self._get_infrared_raman()
                 IR_labels, Ram_labels = self._RamanIR_labels
                 print ("IR  labels ", IR_labels)
                 print ("Ram labels ", Ram_labels)
-            elif (abs(self._q) < self._symprec).all():
+            elif (abs(self._qpoint) < self._symprec).all():
                 if self._log_level > 0:
                     print("Database for this point group is not preprared.")
             else:
@@ -233,14 +237,14 @@ class IrRepsAnaddb(IrRepsEigen):
         degeneracy_tolenrance: the tolerance of frequency difference in deciding the degeneracy.
         log_level: how much information is in the output. 
         """
-        atoms, qpoints, freqs, eigvecs = read_phbst_freqs_and_eigvecs(
+        atoms, qpoints, freqs, eig_vecs = read_phbst_freqs_and_eigvecs(
             phbst_fname)
         primitive_atoms = ase_atoms_to_phonopy_atoms(atoms)
 
         super().__init__(primitive_atoms,
                          qpoints[ind_q],
                          freqs[ind_q],
-                         eigvecs[ind_q],
+                         eig_vecs[ind_q],
 
                          is_little_cogroup=is_little_cogroup,
                          symprec=symprec,
