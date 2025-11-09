@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from setuptools import setup, find_packages
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 
 long_description = """anaddb_irreps: use phonopy to find the irreducible representations of the phonon modes from anaddb output. It is a simple wrapper of the Phonopy irreps module."""
 
@@ -15,7 +15,7 @@ setup(
     license='BSD-2-clause',
     packages=find_packages(),
     scripts=[],
-    install_requires=['numpy>1.16.5', 'ase>=3.19', 'phonopy', 'abipy'],
+    install_requires=['numpy>1.16.5', 'ase>=3.19', 'phonopy>=2.43.0', 'abipy'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Programming Language :: Python :: 3',
