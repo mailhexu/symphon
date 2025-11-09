@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anaddb_irreps"
+version = "0.1.2"
+description = "anaddb_irreps: use phonopy to find the irreducible representations of the phonon modes from anaddb output. It is a simple wrapper of the Phonopy irreps module."
+readme = "README.md"
+authors = [
+  { name = "Xu He", email = "mailhexu@gmail.com" },
+]
+license = { text = "BSD-2-clause" }
+requires-python = ">=3.6"
+dependencies = [
+  "numpy>1.16.5",
+  "ase>=3.19",
+  "phonopy>=2.43.0",
+  "abipy==0.9.8",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Chemistry",
+  "Topic :: Scientific/Engineering :: Physics",
+  "License :: OSI Approved :: BSD License",
+]
+
+[tool.setuptools]
+packages = ["anaddb_irreps"]
+
+[project.scripts]
+anaddb-irreps = "anaddb_irreps.cli:main"

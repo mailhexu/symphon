@@ -2,11 +2,20 @@
 A simple wrapper of the phonopy irreps module for finding irreduciple representations of the phonon modes in anaddb output.
 
 ## Installation
+
+Install from PyPI:
+
 ```
-    pip install . 
+pip install anaddb_irreps
 ```
 
-## Usage:
+Or from source:
+
+```
+pip install .
+```
+
+## Usage (Python API):
 
 - Step 1:
 
@@ -41,4 +50,31 @@ The parameters in the functions:
  *      symprec: precision for deciding the symmetry of the atomic structure.
  *      degeneracy_tolenrance: the tolerance of frequency difference in deciding the degeneracy.
  *      log_level: how much information is in the output. 
+ 
+## Usage (CLI):
+
+You can use the `anaddb-irreps` command-line tool as a lightweight
+alternative to writing a Python script.
+
+Basic example (equivalent to the Python example above):
+
+```bash
+anaddb-irreps \
+  --phbst run_PHBST.nc \
+  --q-index 0 \
+  --symprec 1e-5 \
+  --degeneracy-tolerance 1e-4
+```
+
+Options:
+
+- `-p`, `--phbst` (required): Path to PHBST NetCDF file (e.g. `run_PHBST.nc`).
+- `-q`, `--q-index` (required): Index of the q-point in the PHBST file (0-based).
+- `-s`, `--symprec`: Symmetry precision passed to phonopy (default: `1e-5`).
+- `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy detection (default: `1e-4`).
+- `-l`, `--is-little-cogroup`: Use little co-group setting.
+- `-v`, `--log-level`: Verbosity level passed through to `IrRepsAnaddb` (default: `0`).
+
+The CLI prints the same irreps information as the Python API example.
+
 
