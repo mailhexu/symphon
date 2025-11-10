@@ -1,14 +1,6 @@
 """Command-line interface for anaddb_irreps.
 
-This script provides a simple CLI wrapper around ``IrRepsAnaddb`` so that
-users can obtain irreducible representations directly from a PHBST file
-without writing a Python script.
-
-Usage:
-    uv run python -m anaddb_irreps.cli --phbst run_PHBST.nc --q-index 0
-
-The CLI roughly mirrors the ``IrRepsAnaddb`` constructor arguments and
-prints the table produced by ``IrReps.run()`` / ``_show`` to stdout.
+Provides a concise irreps summary by default and optional verbose output.
 """
 
 import argparse
@@ -70,6 +62,23 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Verbosity level passed to IrRepsAnaddb (default: 0)",
     )
+    parser.add_argument(
+        "--show-verbose",
+        action="store_true",
+        help=(
+            "Also print the full verbose irreps output (phonopy-style). "
+            "By default only a concise table is shown."
+        ),
+    )
+    parser.add_argument(
+        "--verbose-file",
+        type=str,
+        default=None,
+        help=(
+            "If set, write the verbose irreps output to this file instead of "
+            "stdout (only used when --show-verbose is given)."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -88,13 +97,20 @@ def main() -> None:
     )
     irr.run()
 
-    # IrReps base class exposes _show; follow README example to keep behavior.
-    # Use the same "show_all" style as example (True).
-    try:
-        irr._show(True)  # type: ignore[attr-defined]
-    except AttributeError:
-        # Fallback: just print the raw irreps object repr.
-        print(irr)
+    # 1) Always show concise summary table (including IR/Raman activity)
+    print(irr.format_summary_table())
+
+    # 2) Optional verbose output
+    if args.show_verbose or args.verbose_file:
+        verbose_text = irr.get_verbose_output()
+
+        if args.verbose_file:
+            with open(args.verbose_file, "w", encoding="utf-8") as fh:
+                fh.write(verbose_text)
+        elif args.show_verbose:
+            print()
+            print("# Verbose irreps output")
+            print(verbose_text, end="")
 
 
 if __name__ == "__main__":  # pragma: no cover

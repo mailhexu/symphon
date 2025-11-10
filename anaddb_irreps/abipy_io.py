@@ -61,7 +61,12 @@ def read_phbst_freqs_and_eigvecs(fname):
     nbranch = 3 * len(numbers)
     evecs = np.zeros([nqpts, nbranch, nbranch], dtype='complex128')
 
-    freqs = phbst.phfreqs
+    # Frequencies from abipy are in Hartree atomic units.
+    # Convert to THz for phonopy (which expects THz by default).
+    freqs_ha = phbst.phfreqs
+    ha_to_thz = phbst.phfactor_ev2units("THz")
+    freqs = freqs_ha * ha_to_thz
+    
     displ_carts = phbst.phdispl_cart
 
     for iqpt, qpt in enumerate(qpoints):

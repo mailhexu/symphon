@@ -1,5 +1,7 @@
 doc/refs/*.pdf
 
+uv.lock
+
 # Latex 
 *.aux
 

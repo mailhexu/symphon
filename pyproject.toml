@@ -11,7 +11,7 @@ authors = [
   { name = "Xu He", email = "mailhexu@gmail.com" },
 ]
 license = { text = "BSD-2-clause" }
-requires-python = ">=3.6"
+requires-python = ">=3.9"
 dependencies = [
   "numpy>1.16.5",
   "ase>=3.19",

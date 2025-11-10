@@ -1,5 +1,6 @@
 # anaddb_irreps
-A simple wrapper of the phonopy irreps module for finding irreduciple representations of the phonon modes in anaddb output.
+
+A simple wrapper of the phonopy irreps module for finding irreducible representations of phonon modes in ABINIT's anaddb output.
 
 ## Installation
 
@@ -15,66 +16,112 @@ Or from source:
 pip install .
 ```
 
-## Usage (Python API):
+## Usage (Python API)
 
-- Step 1:
+### Prerequisites
 
-  Run anaddb to get the phbst file with phonon frequencies and eigen vectors inside. See for example in the examples/MoS2_1T/anaddb_input directory. 
+Run anaddb to get the PHBST file with phonon frequencies and eigenvectors. See example in `examples/MoS2_1T/anaddb_input/`.
 
-- Step 2:
-
-  Make a python script with the content similar to below and run it. 
-
-  
+### Basic Usage
 
 ```python
-from anaddb_irreps import IrRepsAnaddb
+from anaddb_irreps import print_irreps
 
-def show_phbst_irreps():
-    irr = IrRepsAnaddb(
-        phbst_fname="run_PHBST.nc",
-        ind_q=0,
-        symprec=1e-5,
-        degeneracy_tolerance=1e-4)
-    irr.run()
-    irr._show(True)
-
-show_phbst_irreps()
+# Simple usage
+print_irreps("run_PHBST.nc", ind_q=0)
 ```
 
-The parameters in the functions:
+### With Options
 
- *      phbst_fname: name of phbst file.
- *      ind_q: index of the q point in the phbst.
- *      is_little_cogroup: 
- *      symprec: precision for deciding the symmetry of the atomic structure.
- *      degeneracy_tolenrance: the tolerance of frequency difference in deciding the degeneracy.
- *      log_level: how much information is in the output. 
+```python
+from anaddb_irreps import print_irreps
+
+print_irreps(
+    "run_PHBST.nc",
+    ind_q=0,
+    symprec=1e-8,              # Symmetry precision (default: 1e-5)
+    degeneracy_tolerance=1e-4, # Frequency tolerance (default: 1e-4)
+    log_level=1,               # Verbosity: 0=quiet, 1+=verbose (default: 0)
+    show_verbose=True          # Show detailed phonopy output (default: False)
+)
+```
+
+### Parameters
+
+- **phbst_fname** (str, required): Path to PHBST NetCDF file
+- **ind_q** (int, required): Index of q-point in PHBST file (0-based)
+- **symprec** (float): Symmetry precision for structure analysis (default: 1e-5)
+- **degeneracy_tolerance** (float): Frequency tolerance for degeneracy detection (default: 1e-4)
+- **is_little_cogroup** (bool): Use little co-group setting (default: False)
+- **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
+- **show_verbose** (bool): Show detailed phonopy irreps output (default: False) 
  
-## Usage (CLI):
+## Usage (CLI)
 
-You can use the `anaddb-irreps` command-line tool as a lightweight
-alternative to writing a Python script.
+Use the `anaddb-irreps` command-line tool for quick command-line access.
 
-Basic example (equivalent to the Python example above):
+### Basic Example
+
+```bash
+anaddb-irreps --phbst run_PHBST.nc --q-index 0
+```
+
+### With Options
 
 ```bash
 anaddb-irreps \
   --phbst run_PHBST.nc \
   --q-index 0 \
-  --symprec 1e-5 \
-  --degeneracy-tolerance 1e-4
+  --symprec 1e-8 \
+  --degeneracy-tolerance 1e-4 \
+  --log-level 1
 ```
 
-Options:
+### CLI Options
 
-- `-p`, `--phbst` (required): Path to PHBST NetCDF file (e.g. `run_PHBST.nc`).
-- `-q`, `--q-index` (required): Index of the q-point in the PHBST file (0-based).
-- `-s`, `--symprec`: Symmetry precision passed to phonopy (default: `1e-5`).
-- `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy detection (default: `1e-4`).
-- `-l`, `--is-little-cogroup`: Use little co-group setting.
-- `-v`, `--log-level`: Verbosity level passed through to `IrRepsAnaddb` (default: `0`).
+- `-p`, `--phbst` (required): Path to PHBST NetCDF file
+- `-q`, `--q-index` (required): Index of q-point in PHBST file (0-based)
+- `-s`, `--symprec`: Symmetry precision (default: 1e-5)
+- `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
+- `-l`, `--is-little-cogroup`: Use little co-group setting
+- `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
 
-The CLI prints the same irreps information as the Python API example.
+The CLI produces the same output format as the Python API, showing q-point, point group, and a table of phonon modes with their irreducible representations and IR/Raman activity.
 
+## Output Format
+
+The output includes:
+
+1. **Q-point coordinates** in fractional coordinates
+2. **Point group** of the structure at that q-point
+3. **Mode table** with columns:
+   - `qx, qy, qz`: q-point coordinates (repeated for each mode)
+   - `band`: Mode index (0-based)
+   - `freq(THz)`: Frequency in THz
+   - `freq(cm-1)`: Frequency in cm⁻¹
+   - `label`: Irreducible representation label (e.g., Eu, Eg, A1g)
+   - `IR`: IR activity (`Y` = active, `.` = inactive)
+   - `Raman`: Raman activity (`Y` = active, `.` = inactive)
+
+### Example Output
+
+```
+q-point: [0.0000, 0.0000, 0.0000]
+Point group: -3m
+
+# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman
+ 0.0000  0.0000  0.0000     0      0.0000         0.00  -            .    .  
+ 0.0000  0.0000  0.0000     1      0.0000         0.00  -            .    .  
+ 0.0000  0.0000  0.0000     2      0.0000         0.00  -            .    .  
+ 0.0000  0.0000  0.0000     3      6.4001       213.49  Eu           Y    .  
+ 0.0000  0.0000  0.0000     4      6.4001       213.49  Eu           Y    .  
+ 0.0000  0.0000  0.0000     5      6.8617       228.88  Eg           .    Y  
+ 0.0000  0.0000  0.0000     6      6.8617       228.88  Eg           .    Y  
+ 0.0000  0.0000  0.0000     7     11.1626       372.34  A1g          .    Y  
+ 0.0000  0.0000  0.0000     8     11.3152       377.43  A2u          Y    .  
+```
+
+## Examples
+
+See `examples/MoS2_1T/` for a complete working example with MoS2 1T structure.
 
