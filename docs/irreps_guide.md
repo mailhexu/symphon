@@ -57,10 +57,38 @@ where $g$ is the order of the little group. If $n_i \approx 1$, the block is suc
 BaTiO3 in its cubic phase (Space Group 221, $Pm\bar{3}m$) is an ideal test case.
 
 ### Gamma Point ($\Gamma$)
+The `phonopy` backend is the default and is best suited for the $\Gamma$ point:
 ```bash
 phonopy-irreps --params BaTiO3_phonopy_params.yaml --qpoint 0 0 0
 ```
-Expected result: Acoustic modes are $T_{1u}$, optical modes are $T_{1u}$ and $T_{2u}$.
+
+**Raw CLI Output:**
+```text
+q-point: [0.0000, 0.0000, 0.0000]
+Point group: m-3m
+
+# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman
+ 0.0000  0.0000  0.0000     0     -6.0487      -201.76  T1u          Y    .  
+ 0.0000  0.0000  0.0000     1     -6.0487      -201.76  T1u          Y    .  
+ 0.0000  0.0000  0.0000     2     -6.0487      -201.76  T1u          Y    .  
+ 0.0000  0.0000  0.0000     3     -0.0000        -0.00  T1u          Y    .  
+ 0.0000  0.0000  0.0000     4      0.0000         0.00  T1u          Y    .  
+ 0.0000  0.0000  0.0000     5      0.0000         0.00  T1u          Y    .  
+ 0.0000  0.0000  0.0000     6      5.3224       177.54  T1u          Y    .  
+ 0.0000  0.0000  0.0000     7      5.3224       177.54  T1u          Y    .  
+ 0.0000  0.0000  0.0000     8      5.3224       177.54  T1u          Y    .  
+ 0.0000  0.0000  0.0000     9      8.5335       284.65  T2u          .    .  
+ 0.0000  0.0000  0.0000    10      8.5335       284.65  T2u          .    .  
+ 0.0000  0.0000  0.0000    11      8.5335       284.65  T2u          .    .  
+ 0.0000  0.0000  0.0000    12     13.9081       463.92  T1u          Y    .  
+ 0.0000  0.0000  0.0000    13     13.9081       463.92  T1u          Y    .  
+ 0.0000  0.0000  0.0000    14     13.9081       463.92  T1u          Y    .  
+```
+
+**Interpretation:**
+- **T1u**: Triply degenerate (3D), IR-active, anti-symmetric with respect to inversion.
+- **T2u**: Triply degenerate (3D), silent (neither IR nor Raman active).
+- Note that the acoustic modes (bands 3-5 at 0 THz) and the unstable soft modes (bands 0-2) are all correctly identified.
 
 ### X Point $(0, 0.5, 0)$
 To label the X point, we use the `irrep` backend and specify the `kpname`:
