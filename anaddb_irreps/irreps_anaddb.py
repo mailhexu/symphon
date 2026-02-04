@@ -132,6 +132,10 @@ class ReportingMixin:
     def format_summary_table(self, include_header: bool = True) -> str:
         """Format the summary table as a human-readable string."""
         summary = self.get_summary_table()
+
+        # Only show activity columns if we have activity data (supported by backend)
+        show_activity = getattr(self, "_backend", "phonopy") == "phonopy"
+
         lines = []
         if summary:
             qx, qy, qz = summary[0]["qpoint"]
@@ -141,21 +145,33 @@ class ReportingMixin:
             lines.append(f"Point group: {point_group}")
         if lines:
             lines.append("")
+
         if include_header:
-            header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman"
+            if show_activity:
+                header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman"
+            else:
+                header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label"
             lines.append(header)
+
         for row in summary:
             qx, qy, qz = row["qpoint"]
             bi = row["band_index"]
             f_thz = row["frequency_thz"]
             f_cm1 = row["frequency_cm1"]
             label = row["label"] or "-"
-            ir_flag = "Y" if row["is_ir_active"] else "."
-            raman_flag = "Y" if row["is_raman_active"] else "."
-            line = (
-                f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
-            )
+            
+            if show_activity:
+                ir_flag = "Y" if row["is_ir_active"] else "."
+                raman_flag = "Y" if row["is_raman_active"] else "."
+                line = (
+                    f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
+                    f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                )
+            else:
+                line = (
+                    f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
+                    f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}"
+                )
             lines.append(line)
         return "\n".join(lines)
 
@@ -550,6 +566,10 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
     def format_summary_table(self, include_header: bool = True) -> str:
         """Format the summary table as a human-readable string."""
         summary = self.get_summary_table()
+
+        # Only show activity columns if we have activity data (supported by backend)
+        show_activity = getattr(self, "_backend", "phonopy") == "phonopy"
+
         lines = []
         if summary:
             qx, qy, qz = summary[0]["qpoint"]
@@ -559,21 +579,33 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             lines.append(f"Point group: {point_group}")
         if lines:
             lines.append("")
+
         if include_header:
-            header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman"
+            if show_activity:
+                header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman"
+            else:
+                header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label"
             lines.append(header)
+
         for row in summary:
             qx, qy, qz = row["qpoint"]
             bi = row["band_index"]
             f_thz = row["frequency_thz"]
             f_cm1 = row["frequency_cm1"]
             label = row["label"] or "-"
-            ir_flag = "Y" if row["is_ir_active"] else "."
-            raman_flag = "Y" if row["is_raman_active"] else "."
-            line = (
-                f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
-            )
+            
+            if show_activity:
+                ir_flag = "Y" if row["is_ir_active"] else "."
+                raman_flag = "Y" if row["is_raman_active"] else "."
+                line = (
+                    f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
+                    f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                )
+            else:
+                line = (
+                    f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
+                    f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}"
+                )
             lines.append(line)
         return "\n".join(lines)
 
