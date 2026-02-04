@@ -37,7 +37,7 @@ class IrRepsEigen(IrReps, IrRepLabels):
         self._verbose = False
 
     def run(self) -> bool:
-        self._symmetry_dataset = Symmetry(self._primitive, symprec=self._symprec).get_dataset()
+        self._symmetry_dataset = Symmetry(self._primitive, symprec=self._symprec).dataset
 
         # if not self._is_primitive_cell():
         #     print("")
@@ -45,7 +45,7 @@ class IrRepsEigen(IrReps, IrRepLabels):
         #     print("Your unit cell may be transformed to a primitive cell "
         #           "by PRIMITIVE_AXIS tag.")
         #     return False
-        if not is_primitive_cell(self._symmetry_dataset["rotations"]):
+        if not is_primitive_cell(self._symmetry_dataset.rotations):
             raise RuntimeError(
                 "Non-primitve cell is used. Your unit cell may be transformed to "
                 "a primitive cell by PRIMITIVE_AXIS tag."
