@@ -19,8 +19,6 @@ dependencies = [
   "netCDF4",
 ]
 
-[project.optional-dependencies]
-abipy = ["abipy>=0.9.8"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Programming Language :: Python :: 3",
@@ -30,6 +28,9 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Physics",
   "License :: OSI Approved :: BSD License",
 ]
+
+[project.optional-dependencies]
+abipy = ["abipy>=0.9.8"]
 
 [tool.setuptools]
 packages = ["anaddb_irreps"]
