@@ -66,27 +66,30 @@ class IrRepsIrrep:
         # 4. Match traces with BCS labels
         self._irreps = []
         for block in self._degenerate_sets:
-            # Average traces over degenerate block
-            block_traces = np.mean(all_traces[block, :], axis=0)
+            # Calculate total trace for the degenerate block (reducible representation of the block)
+            block_traces_sum = np.sum(all_traces[block, :], axis=0)
             
             best_match = None
             max_overlap = 0
             
             for label, table_chars in bcs_table.items():
+                g = len(table_chars) # Size of the little group in the table
                 overlap = 0
-                count = 0
                 for i, sym in enumerate(little_group):
                     if sym.ind in table_chars:
-                        overlap += np.conj(table_chars[sym.ind]) * block_traces[i]
-                        count += 1
+                        # Standard projection formula: multiplicity n = 1/g * sum(chi_irrep* * chi_block)
+                        overlap += np.conj(table_chars[sym.ind]) * block_traces_sum[i]
                 
-                overlap = np.abs(overlap) / count if count > 0 else 0
-                if overlap > max_overlap:
-                    max_overlap = overlap
+                n = overlap / g
+                match_val = np.abs(n)
+                
+                if match_val > max_overlap:
+                    max_overlap = match_val
                     best_match = label
             
             # Store result for each mode in the block
             for _ in block:
+                # If multiplicity is close to 1 (or integer), it's a good match
                 if max_overlap > 0.8:
                     self._irreps.append({"label": best_match})
                 else:
