@@ -55,7 +55,8 @@ class IrRepsEigen(IrReps, IrRepLabels):
 
         self._g = len(self._rotations_at_q)
 
-        self._pointgroup_symbol = self._symmetry_dataset.pointgroup
+        import spglib
+        self._pointgroup_symbol, _, _ = spglib.get_pointgroup(self._rotations_at_q)
 
         (self._transformation_matrix, self._conventional_rotations,) = self._get_conventional_rotations()
 
@@ -74,22 +75,25 @@ class IrRepsEigen(IrReps, IrRepLabels):
             self._character_table = character_table_of_ptg
             # print(" char tab ", self._character_table)
 
-            if (abs(self._qpoint) < self._symprec).all() and self._rotation_symbols:
+            if self._rotation_symbols:
                 self._ir_labels = self._get_irrep_labels(character_table_of_ptg)
-                self._RamanIR_labels = self._get_infrared_raman()
-                IR_labels, Ram_labels = self._RamanIR_labels
-                if self._log_level > 0:
-                    print("IR  labels", IR_labels)
-                    print("Ram labels", Ram_labels)
+                if (abs(self._qpoint) < self._symprec).all():
+                    self._RamanIR_labels = self._get_infrared_raman()
+                    IR_labels, Ram_labels = self._RamanIR_labels
+                    if self._log_level > 0:
+                        print("IR  labels", IR_labels)
+                        print("Ram labels", Ram_labels)
 
             elif (abs(self._qpoint) < self._symprec).all():
                 if self._log_level > 0:
                     print("Database for this point group is not preprared.")
             else:
                 if self._log_level > 0:
-                    print("Database for non-Gamma point is not prepared.")
+                    print(f"Database for point group {self._pointgroup_symbol} at non-Gamma point is not prepared.")
         else:
             self._rotation_symbols = None
+            if self._log_level > 0:
+                print(f"Point group {self._pointgroup_symbol} not found in database.")
 
         return True
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anaddb_irreps"
-version = "0.1.2"
+version = "0.1.3"
 description = "anaddb_irreps: use phonopy to find the irreducible representations of the phonon modes from anaddb output. It is a simple wrapper of the Phonopy irreps module."
 readme = "README.md"
 authors = [
