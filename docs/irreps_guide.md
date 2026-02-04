@@ -67,14 +67,44 @@ To label the X point, we use the `irrep` backend and specify the `kpname`:
 ```bash
 phonopy-irreps --params BaTiO3_phonopy_params.yaml --qpoint 0 0.5 0 --backend irrep --kpname X
 ```
-**Interpretation:**
-- You will see labels like `X1+`, `X5-`, etc.
-- The `+`/`-` indicates parity if the little group is centrosymmetric.
+
+**Results and Interpretation:**
+- Labels like `X1+` and `X5-` follow the BCS standard.
+- The `+`/`-` indicates **parity** (symmetric or anti-symmetric) with respect to inversion, as the little group for the $X$ point in this space group is centrosymmetric.
+- `X5` is a **2D representation**, consistent with the doubly degenerate modes found at frequencies -4.88, 3.32, 6.03, 10.15, and 12.96 THz.
+
+| Band Index | Freq (THz) | Irrep Label | Match Score |
+|------------|------------|-------------|-------------|
+| 0, 1       | -4.88      | X5+         | 1.00        |
+| 2, 3       | 3.32       | X5-         | 1.00        |
+| 4          | 4.66       | X3-         | 1.00        |
+| 5, 6       | 6.03       | X5+         | 1.00        |
+| 7          | 8.45       | X1+         | 1.00        |
+| 8          | 9.87       | X2+         | 1.00        |
+| 9, 10      | 10.15      | X5-         | 1.00        |
+| 11, 12     | 12.96      | X5+         | 1.00        |
+| 13         | 17.30      | X1+         | 1.00        |
+| 14         | 21.42      | X3-         | 1.00        |
 
 ### M Point $(0.5, 0.5, 0)$
 ```bash
 phonopy-irreps --params BaTiO3_phonopy_params.yaml --qpoint 0.5 0.5 0 --backend irrep --kpname M
 ```
+
+**Results:**
+| Band Index | Freq (THz) | Irrep Label | Match Score |
+|------------|------------|-------------|-------------|
+| 0          | -3.99      | M2-         | 1.00        |
+| 1, 2       | 3.01       | M5-         | 1.00        |
+| 3          | 3.30       | M3-         | 1.00        |
+| 4          | 5.91       | M2+         | 1.00        |
+| 5, 6       | 8.50       | M5-         | 1.00        |
+| 7          | 10.41      | M2-         | 1.00        |
+| 8          | 10.54      | M3+         | 1.00        |
+| 9, 10      | 10.59      | M5+         | 1.00        |
+| 11, 12     | 13.39      | M5-         | 1.00        |
+| 13         | 13.99      | M1+         | 1.00        |
+| 14         | 22.07      | M4+         | 1.00        |
 
 ### Tips for Success:
 1. **Symmetry Precision**: If the space group is not detected correctly, try adjusting `--symprec` (e.g., `1e-3`).
