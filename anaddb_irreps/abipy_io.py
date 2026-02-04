@@ -54,9 +54,12 @@ def displacement_cart_to_evec(displ_cart,
 
 
 def read_phbst_freqs_and_eigvecs(fname):
-    if not HAS_ABIPY:
+    try:
         return read_phbst_no_abipy(fname)
-    
+    except Exception as e:
+        if not HAS_ABIPY:
+            raise e
+
     try:
         ncfile = abilab.abiopen(fname)
         struct = ncfile.structure
@@ -91,4 +94,4 @@ def read_phbst_freqs_and_eigvecs(fname):
 
         return atoms, qpoints, freqs, evecs
     except Exception:
-        return read_phbst_no_abipy(fname)
+        raise
