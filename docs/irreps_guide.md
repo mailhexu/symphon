@@ -68,43 +68,62 @@ To label the X point, we use the `irrep` backend and specify the `kpname`:
 phonopy-irreps --params BaTiO3_phonopy_params.yaml --qpoint 0 0.5 0 --backend irrep --kpname X
 ```
 
-**Results and Interpretation:**
+**Raw CLI Output:**
+```text
+q-point: [0.0000, 0.5000, 0.0000]
+Point group: Pm-3m
+
+# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman
+ 0.0000  0.5000  0.0000     0     -4.8804      -162.79  X5+          .    .  
+ 0.0000  0.5000  0.0000     1     -4.8804      -162.79  X5+          .    .  
+ 0.0000  0.5000  0.0000     2      3.3171       110.65  X5-          .    .  
+ 0.0000  0.5000  0.0000     3      3.3171       110.65  X5-          .    .  
+ 0.0000  0.5000  0.0000     4      4.6550       155.27  X3-          .    .  
+ 0.0000  0.5000  0.0000     5      6.0282       201.08  X5+          .    .  
+ 0.0000  0.5000  0.0000     6      6.0282       201.08  X5+          .    .  
+ 0.0000  0.5000  0.0000     7      8.4478       281.79  X1+          .    .  
+ 0.0000  0.5000  0.0000     8      9.8687       329.19  X2+          .    .  
+ 0.0000  0.5000  0.0000     9     10.1483       338.51  X5-          .    .  
+ 0.0000  0.5000  0.0000    10     10.1483       338.51  X5-          .    .  
+ 0.0000  0.5000  0.0000    11     12.9610       432.33  X5+          .    .  
+ 0.0000  0.5000  0.0000    12     12.9610       432.33  X5+          .    .  
+ 0.0000  0.5000  0.0000    13     17.3048       577.23  X1+          .    .  
+ 0.0000  0.5000  0.0000    14     21.4201       714.50  X3-          .    .  
+```
+
+**Interpretation:**
 - Labels like `X1+` and `X5-` follow the BCS standard.
 - The `+`/`-` indicates **parity** (symmetric or anti-symmetric) with respect to inversion, as the little group for the $X$ point in this space group is centrosymmetric.
 - `X5` is a **2D representation**, consistent with the doubly degenerate modes found at frequencies -4.88, 3.32, 6.03, 10.15, and 12.96 THz.
-
-| Band Index | Freq (THz) | Irrep Label | Match Score |
-|------------|------------|-------------|-------------|
-| 0, 1       | -4.88      | X5+         | 1.00        |
-| 2, 3       | 3.32       | X5-         | 1.00        |
-| 4          | 4.66       | X3-         | 1.00        |
-| 5, 6       | 6.03       | X5+         | 1.00        |
-| 7          | 8.45       | X1+         | 1.00        |
-| 8          | 9.87       | X2+         | 1.00        |
-| 9, 10      | 10.15      | X5-         | 1.00        |
-| 11, 12     | 12.96      | X5+         | 1.00        |
-| 13         | 17.30      | X1+         | 1.00        |
-| 14         | 21.42      | X3-         | 1.00        |
 
 ### M Point $(0.5, 0.5, 0)$
 ```bash
 phonopy-irreps --params BaTiO3_phonopy_params.yaml --qpoint 0.5 0.5 0 --backend irrep --kpname M
 ```
 
-**Results:**
-| Band Index | Freq (THz) | Irrep Label | Match Score |
-|------------|------------|-------------|-------------|
-| 0          | -3.99      | M2-         | 1.00        |
-| 1, 2       | 3.01       | M5-         | 1.00        |
-| 3          | 3.30       | M3-         | 1.00        |
-| 4          | 5.91       | M2+         | 1.00        |
-| 5, 6       | 8.50       | M5-         | 1.00        |
-| 7          | 10.41      | M2-         | 1.00        |
-| 8          | 10.54      | M3+         | 1.00        |
-| 9, 10      | 10.59      | M5+         | 1.00        |
-| 11, 12     | 13.39      | M5-         | 1.00        |
-| 13         | 13.99      | M1+         | 1.00        |
-| 14         | 22.07      | M4+         | 1.00        |
+**Raw CLI Output:**
+```text
+q-point: [0.5000, 0.5000, 0.0000]
+Point group: Pm-3m
+
+# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman
+ 0.5000  0.5000  0.0000     0     -3.9928      -133.19  M2-          .    .  
+ 0.5000  0.5000  0.0000     1      3.0079       100.33  M5-          .    .  
+ 0.5000  0.5000  0.0000     2      3.0079       100.33  M5-          .    .  
+ 0.5000  0.5000  0.0000     3      3.3028       110.17  M3-          .    .  
+ 0.5000  0.5000  0.0000     4      5.9079       197.07  M2+          .    .  
+ 0.5000  0.5000  0.0000     5      8.4982       283.47  M5-          .    .  
+ 0.5000  0.5000  0.0000     6      8.4982       283.47  M5-          .    .  
+ 0.5000  0.5000  0.0000     7     10.4145       347.39  M2-          .    .  
+ 0.5000  0.5000  0.0000     8     10.5430       351.68  M3+          .    .  
+ 0.5000  0.5000  0.0000     9     10.5896       353.23  M5+          .    .  
+ 0.5000  0.5000  0.0000    10     10.5896       353.23  M5+          .    .  
+ 0.5000  0.5000  0.0000    11     13.3902       446.65  M5-          .    .  
+ 0.5000  0.5000  0.0000    12     13.3902       446.65  M5-          .    .  
+ 0.5000  0.5000  0.0000    13     13.9911       466.69  M1+          .    .  
+ 0.5000  0.5000  0.0000    14     22.0658       736.04  M4+          .    .  
+```
+
 
 ### Tips for Success:
 1. **Symmetry Precision**: If the space group is not detected correctly, try adjusting `--symprec` (e.g., `1e-3`).
