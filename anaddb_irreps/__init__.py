@@ -1,3 +1,4 @@
-from .irreps_anaddb import IrRepsAnaddb, print_irreps
+from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, print_irreps, print_irreps_phonopy
+ 
+__all__ = ["IrRepsAnaddb", "IrRepsPhonopy", "print_irreps", "print_irreps_phonopy"]
 
-__all__ = ["IrRepsAnaddb", "print_irreps"]

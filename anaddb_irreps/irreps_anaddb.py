@@ -6,19 +6,21 @@ from phonopy.phonon.character_table import character_table
 from anaddb_irreps.abipy_io import read_phbst_freqs_and_eigvecs, ase_atoms_to_phonopy_atoms
 from phonopy.phonon.degeneracy import degenerate_sets as get_degenerate_sets
 from phonopy.structure.cells import is_primitive_cell
+from phonopy import load as phonopy_load
 
 
-class IrRepsEigen(IrReps,IrRepLabels):
+class IrRepsEigen(IrReps, IrRepLabels):
     def __init__(
-            self,
-            primitive_atoms,
-            qpoint,
-            freqs,
-            eigvecs,
-            is_little_cogroup=False,
-            symprec=1e-5,
-            degeneracy_tolerance=1e-5,
-            log_level=0):
+        self,
+        primitive_atoms,
+        qpoint,
+        freqs,
+        eigvecs,
+        is_little_cogroup: bool = False,
+        symprec: float = 1e-5,
+        degeneracy_tolerance: float = 1e-5,
+        log_level: int = 0,
+    ) -> None:
         self._is_little_cogroup = is_little_cogroup
         # self._nac_q_direction = nac_q_direction
         self._log_level = log_level
@@ -34,32 +36,28 @@ class IrRepsEigen(IrReps,IrRepLabels):
         self._character_table = None
         self._verbose = False
 
-    def run(self):
-        self._symmetry_dataset = Symmetry(self._primitive,
-                                          symprec=self._symprec).get_dataset()
+    def run(self) -> bool:
+        self._symmetry_dataset = Symmetry(self._primitive, symprec=self._symprec).get_dataset()
 
-#        if not self._is_primitive_cell():
-#            print('')
-#            print("Non-primitve cell is used.")
-#            print("Your unit cell may be transformed to a primitive cell "
-#                  "by PRIMITIVE_AXIS tag.")
-#            return False
+        # if not self._is_primitive_cell():
+        #     print("")
+        #     print("Non-primitve cell is used.")
+        #     print("Your unit cell may be transformed to a primitive cell "
+        #           "by PRIMITIVE_AXIS tag.")
+        #     return False
         if not is_primitive_cell(self._symmetry_dataset["rotations"]):
             raise RuntimeError(
                 "Non-primitve cell is used. Your unit cell may be transformed to "
                 "a primitive cell by PRIMITIVE_AXIS tag."
             )
 
-
-        (self._rotations_at_q,
-         self._translations_at_q) = self._get_rotations_at_q()
+        (self._rotations_at_q, self._translations_at_q) = self._get_rotations_at_q()
 
         self._g = len(self._rotations_at_q)
 
-        self._pointgroup_symbol = self._symmetry_dataset.pointgroup                                                                                                                                 
+        self._pointgroup_symbol = self._symmetry_dataset.pointgroup
 
-        (self._transformation_matrix,
-         self._conventional_rotations,) = self._get_conventional_rotations()
+        (self._transformation_matrix, self._conventional_rotations,) = self._get_conventional_rotations()
 
         self._ground_matrices = self._get_ground_matrix()
         self._degenerate_sets = self._get_degenerate_sets()
@@ -68,11 +66,13 @@ class IrRepsEigen(IrReps,IrRepLabels):
 
         self._ir_labels = None
 
-        if (self._pointgroup_symbol in character_table.keys()
-                and character_table[self._pointgroup_symbol] is not None):
+        if (
+            self._pointgroup_symbol in character_table.keys()
+            and character_table[self._pointgroup_symbol] is not None
+        ):
             self._rotation_symbols, character_table_of_ptg = self._get_rotation_symbols(self._pointgroup_symbol)
             self._character_table = character_table_of_ptg
-            #print (" char tab ", self._character_table)
+            # print(" char tab ", self._character_table)
 
             if (abs(self._qpoint) < self._symprec).all() and self._rotation_symbols:
                 self._ir_labels = self._get_irrep_labels(character_table_of_ptg)
@@ -81,7 +81,6 @@ class IrRepsEigen(IrReps,IrRepLabels):
                 if self._log_level > 0:
                     print("IR  labels", IR_labels)
                     print("Ram labels", Ram_labels)
-
 
             elif (abs(self._qpoint) < self._symprec).all():
                 if self._log_level > 0:
@@ -95,141 +94,160 @@ class IrRepsEigen(IrReps,IrRepLabels):
         return True
 
     def _get_degenerate_sets(self):
-        deg_sets = get_degenerate_sets(self._freqs,
-                                       cutoff=self._degeneracy_tolerance)
+        deg_sets = get_degenerate_sets(self._freqs, cutoff=self._degeneracy_tolerance)
         return deg_sets
 
     def _get_infrared_raman(self):
-        """once we have irreps and characters, use them and symops to find the IR and Raman active irreps
-        http://symmetry.jacobs-university.de/cgi-bin/group.cgi?group=606&option=4
-        """
-# make symops in cartesian space
-        rprim = self._primitive.cell  #np.identity(3)
-        gprim = np.linalg.inv(rprim).T
-        #print (" R G ", rprim, gprim)
-        #print ("rot ", self._rotations_at_q)
+        """Compute IR- and Raman-active irreps using symmetry operations.
 
-# make cartesian symop matrices for each operation in each class
-# then get characters for IR and Raman reducible representations
-        nclass = len(self._character_table['rotation_list'])
-        self._cartesian_rotations_at_q = np.zeros([nclass,96,3,3])
+        Once irreps and characters are available, use them together with
+        symmetry operations to determine which irreps are IR- and
+        Raman-active.
+        """
+
+        # make symops in cartesian space
+        rprim = self._primitive.cell  # np.identity(3)
+        gprim = np.linalg.inv(rprim).T
+        # print(" R G ", rprim, gprim)
+        # print("rot ", self._rotations_at_q)
+
+        # make cartesian symop matrices for each operation in each class
+        # then get characters for IR and Raman reducible representations
+        nclass = len(self._character_table["rotation_list"])
+        self._cartesian_rotations_at_q = np.zeros([nclass, 96, 3, 3])
         degenclass = np.zeros(nclass)
         characters_xyz = np.zeros(nclass)
         chardegen_xyz = np.zeros(nclass)
         characters_x2 = np.zeros(nclass)
         chardegen_x2 = np.zeros(nclass)
         iclass = 0
-        for opclass in self._character_table['mapping_table'].keys():
-          degenclass[iclass] = len(self._character_table['mapping_table'][opclass])
-          iop = 0
-          for symop in  np.array(self._character_table['mapping_table'][opclass][:]):
-            #print ("rotred ", symop)
-            self._cartesian_rotations_at_q[iclass][iop] = np.dot(rprim, np.dot(symop, gprim.T))
-            #print (" rotcart ", self._cartesian_rotations_at_q[isym])
+        for opclass in self._character_table["mapping_table"].keys():
+            degenclass[iclass] = len(self._character_table["mapping_table"][opclass])
+            iop = 0
+            for symop in np.array(self._character_table["mapping_table"][opclass][:]):
+                # print("rotred ", symop)
+                self._cartesian_rotations_at_q[iclass][iop] = np.dot(
+                    rprim, np.dot(symop, gprim.T)
+                )
+                # print(" rotcart ", self._cartesian_rotations_at_q[isym])
 
-            #m = self._cartesian_rotations_at_q[iclass][iop]
-            #character_x2_iop =  np.matrix.trace(np.block([[m*m[0,0], m*m[0,1], m*m[0,2]],\
-            #                                              [m*m[1,0], m*m[1,1], m*m[1,2]],\
-            #                                              [m*m[2,0], m*m[2,1], m*m[2,2]]]))
-            #print ("class ", opclass, " op ", iop, " character ", character_x2_iop)
+                # m = self._cartesian_rotations_at_q[iclass][iop]
+                # character_x2_iop =  np.matrix.trace(np.block([[m*m[0,0], m*m[0,1], m*m[0,2]],\
+                #                                              [m*m[1,0], m*m[1,1], m*m[1,2]],\
+                #                                              [m*m[2,0], m*m[2,1], m*m[2,2]]]))
+                # print("class ", opclass, " op ", iop, " character ", character_x2_iop)
 
-            iop += 1 
+                iop += 1
 
-          m = self._cartesian_rotations_at_q[iclass][0]
-# get representation characters for x,y,z functions
-          characters_xyz[iclass] = np.matrix.trace(m)
+            m = self._cartesian_rotations_at_q[iclass][0]
+            # get representation characters for x,y,z functions
+            characters_xyz[iclass] = np.matrix.trace(m)
 
-# get representation characters for quadratic functions
-# line below is in x2 xy y2 xz yz z2 format
-          bigmat = np.zeros([6,6])
-          ibig = 0
-          for ixyz in range(3):
-            for ixyz_prime in range(ixyz+1):
-              outprod = np.ndarray.flatten(np.outer(m[:,ixyz],m[:,ixyz_prime]))
-              bigmat[ibig,:] = [outprod[0], \
-                 outprod[1]+outprod[3], outprod[4], \
-                 outprod[2]+outprod[6], outprod[5]+outprod[7], outprod[8]]
-                
-              ibig += 1
-          #print (" class ", iclass, opclass, " x2 matrix", bigmat)
+            # get representation characters for quadratic functions
+            # line below is in x2 xy y2 xz yz z2 format
+            bigmat = np.zeros([6, 6])
+            ibig = 0
+            for ixyz in range(3):
+                for ixyz_prime in range(ixyz + 1):
+                    outprod = np.ndarray.flatten(np.outer(m[:, ixyz], m[:, ixyz_prime]))
+                    bigmat[ibig, :] = [
+                        outprod[0],
+                        outprod[1] + outprod[3],
+                        outprod[4],
+                        outprod[2] + outprod[6],
+                        outprod[5] + outprod[7],
+                        outprod[8],
+                    ]
 
-          characters_x2[iclass] = np.matrix.trace(bigmat)
-          #print (" class ", iclass, "x2 charac ", characters_x2[iclass])
+                    ibig += 1
+            # print(" class ", iclass, opclass, " x2 matrix", bigmat)
 
-          chardegen_xyz[iclass] = characters_xyz[iclass]*degenclass[iclass]
-          chardegen_x2[iclass]  = characters_x2[iclass]*degenclass[iclass]
-          #print ("xyz charac ", characters_xyz[iclass], " degen ", self._degenclass[iclass])
-          iclass += 1
+            characters_x2[iclass] = np.matrix.trace(bigmat)
+            # print(" class ", iclass, "x2 charac ", characters_x2[iclass])
 
-# now we have red representations, project them into irreps
-        #print ("irrep  characters g = ", self._g)
-        xyzlabels = ['x','y','z']
-        x2labels = ['x^2', 'xy', 'y^2', 'xz', 'yz', 'z^2']
-        IR_dict={'x':None, 'y':None, 'z':None}
-        Raman_dict={'x^2':[],'xy':[],'y^2':[],'xz':[],'yz':[],'z^2':[]}
+            chardegen_xyz[iclass] = characters_xyz[iclass] * degenclass[iclass]
+            chardegen_x2[iclass] = characters_x2[iclass] * degenclass[iclass]
+            # print("xyz charac ", characters_xyz[iclass], " degen ", self._degenclass[iclass])
+            iclass += 1
 
-# loop over irreducible representations
+        # now we have red representations, project them into irreps
+        # print("irrep  characters g = ", self._g)
+        xyzlabels = ["x", "y", "z"]
+        x2labels = ["x^2", "xy", "y^2", "xz", "yz", "z^2"]
+        IR_dict = {"x": None, "y": None, "z": None}
+        Raman_dict = {"x^2": [], "xy": [], "y^2": [], "xz": [], "yz": [], "z^2": []}
+
+        # loop over irreducible representations
         i_ir = 0
-        for irreplabel in self._character_table['character_table'].keys():
-          # characters
-          irr_char = self._character_table['character_table'][irreplabel]
-          # l_n dimention of current irreps
-          len_irr = irr_char[0]
-          # number of ir modes here
-          n_ir = int(np.dot(irr_char,chardegen_xyz)/self._g)
-          # number of Raman modes here
-          n_ram = int(np.dot(irr_char,chardegen_x2)/self._g)
-          #print (irreplabel, " nir ", n_ir, " nram ", n_ram, " irchar ", irr_char)
+        for irreplabel in self._character_table["character_table"].keys():
+            # characters
+            irr_char = self._character_table["character_table"][irreplabel]
+            # l_n dimention of current irreps
+            len_irr = irr_char[0]
+            # number of ir modes here
+            n_ir = int(np.dot(irr_char, chardegen_xyz) / self._g)
+            # number of Raman modes here
+            n_ram = int(np.dot(irr_char, chardegen_x2) / self._g)
+            # print(irreplabel, " nir ", n_ir, " nram ", n_ram, " irchar ", irr_char)
 
-# find eigenvectors: are x y or z isolated in representation?
-# IR
-          for ixyz in range(3):
-            xyzvec = np.zeros(3)
-            for iclass in range(len(self._character_table['mapping_table'].keys())):
-              opclass = list(self._character_table['mapping_table'].keys())[iclass]
-              degenclass = len(self._character_table['mapping_table'][opclass][:])
-              for iop in range(degenclass):
-                xyzvec += irr_char[iclass] * self._cartesian_rotations_at_q[iclass][iop][ixyz,:]
-            xyzvec *= len_irr/self._g
-            if np.linalg.norm(xyzvec) > 1.e-6:
-              IR_dict[xyzlabels[ixyz]] = irreplabel
+            # find eigenvectors: are x y or z isolated in representation?
+            # IR
+            for ixyz in range(3):
+                xyzvec = np.zeros(3)
+                for iclass in range(len(self._character_table["mapping_table"].keys())):
+                    opclass = list(self._character_table["mapping_table"].keys())[iclass]
+                    degenclass = len(self._character_table["mapping_table"][opclass][:])
+                    for iop in range(degenclass):
+                        xyzvec += (
+                            irr_char[iclass]
+                            * self._cartesian_rotations_at_q[iclass][iop][ixyz, :]
+                        )
+                xyzvec *= len_irr / self._g
+                if np.linalg.norm(xyzvec) > 1.0e-6:
+                    IR_dict[xyzlabels[ixyz]] = irreplabel
 
-# find the irreps which contain each of the quadratic functions (not full linear combination basis functions, but still)
-# Raman
-          ibig = 0
-          bigvec = np.zeros(6)
-          for ixyz in range(3):
-            for ixyz_prime in range(ixyz+1):
-              x2vec = np.zeros(6)
-# loop over all operations
-              for iclass in range(len(self._character_table['mapping_table'].keys())):
-                opclass = list(self._character_table['mapping_table'].keys())[iclass]
-                degenclass = len(self._character_table['mapping_table'][opclass][:])
-                for iop in range(degenclass):
-                  m = self._cartesian_rotations_at_q[iclass][iop]
-                  outprod = np.ndarray.flatten(np.outer(m[:,ixyz],m[:,ixyz_prime]))
-                  bigvec = np.array([outprod[0], \
-                     outprod[1]+outprod[3], outprod[4], \
-                     outprod[2]+outprod[6], outprod[5]+outprod[7], outprod[8]])
-                  x2vec  += irr_char[iclass] * bigvec
+            # find the irreps which contain each of the quadratic functions (not full
+            # linear combination basis functions, but still)
+            # Raman
+            ibig = 0
+            bigvec = np.zeros(6)
+            for ixyz in range(3):
+                for ixyz_prime in range(ixyz + 1):
+                    x2vec = np.zeros(6)
+                    # loop over all operations
+                    for iclass in range(
+                        len(self._character_table["mapping_table"].keys())
+                    ):
+                        opclass = list(self._character_table["mapping_table"].keys())[iclass]
+                        degenclass = len(self._character_table["mapping_table"][opclass][:])
+                        for iop in range(degenclass):
+                            m = self._cartesian_rotations_at_q[iclass][iop]
+                            outprod = np.ndarray.flatten(
+                                np.outer(m[:, ixyz], m[:, ixyz_prime])
+                            )
+                            bigvec = np.array(
+                                [
+                                    outprod[0],
+                                    outprod[1] + outprod[3],
+                                    outprod[4],
+                                    outprod[2] + outprod[6],
+                                    outprod[5] + outprod[7],
+                                    outprod[8],
+                                ]
+                            )
+                            x2vec += irr_char[iclass] * bigvec
 
-              x2vec *= len_irr/self._g
-              if np.linalg.norm(x2vec) > 1.e-6:
-                #print (x2labels[ibig], " belongs to ", irreplabel , " norm ", np.linalg.norm(x2vec))
-                Raman_dict[x2labels[ibig]].append(irreplabel)
+                    x2vec *= len_irr / self._g
+                    if np.linalg.norm(x2vec) > 1.0e-6:
+                        # print(x2labels[ibig], " belongs to ", irreplabel , " norm ",
+                        #       np.linalg.norm(x2vec))
+                        Raman_dict[x2labels[ibig]].append(irreplabel)
 
-              ibig += 1
-# loop over irreps
-          i_ir += 1
+                    ibig += 1
+            # loop over irreps
+            i_ir += 1
 
         return IR_dict, Raman_dict
-
-class IrRepsAnaddb(IrRepsEigen):
-    """Irreps helper tied to anaddb PHBST output.
-
-    Added helpers focus on a compact summary table that is easier to
-    consume programmatically and via the CLI.
-    """
 
     def get_summary_table(self):
         """Return core mode information as list of dicts.
@@ -246,9 +264,7 @@ class IrRepsAnaddb(IrRepsEigen):
         ``run()`` must be called before using this method.
         """
         if not hasattr(self, "_freqs"):
-            raise RuntimeError(
-                "IrRepsAnaddb.run() must be called before get_summary_table()."
-            )
+            raise RuntimeError("run() must be called before get_summary_table().")
 
         q = tuple(float(x) for x in self._qpoint)
 
@@ -326,6 +342,7 @@ class IrRepsAnaddb(IrRepsEigen):
                     for i in deg_set:
                         raw_labels[i] = lbl
                 # If 0 or >1 distinct labels, leave as-is (ambiguous).
+
         # Third pass: build summary rows using final labels and IR/Raman flags.
         summary = []
         for band_index, f_thz in enumerate(freqs_thz):
@@ -365,25 +382,25 @@ class IrRepsAnaddb(IrRepsEigen):
         ``run()`` and ``get_summary_table()`` must be called before this method.
         """
         summary = self.get_summary_table()
-        
+
         lines = []
-        
+
         # Add q-point and point group information
         if summary:
             qx, qy, qz = summary[0]["qpoint"]
             lines.append(f"q-point: [{qx:.4f}, {qy:.4f}, {qz:.4f}]")
-        
+
         point_group = getattr(self, "_pointgroup_symbol", None)
         if point_group:
             lines.append(f"Point group: {point_group}")
-        
+
         if lines:
             lines.append("")  # Empty line before table
-        
+
         if include_header:
             header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman"
             lines.append(header)
-        
+
         for row in summary:
             qx, qy, qz = row["qpoint"]
             bi = row["band_index"]
@@ -392,13 +409,13 @@ class IrRepsAnaddb(IrRepsEigen):
             label = row["label"] or "-"
             ir_flag = "Y" if row["is_ir_active"] else "."
             raman_flag = "Y" if row["is_raman_active"] else "."
-            
+
             line = (
                 f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
                 f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
             )
             lines.append(line)
-        
+
         return "\n".join(lines)
 
     def get_verbose_output(self) -> str:
@@ -427,37 +444,134 @@ class IrRepsAnaddb(IrRepsEigen):
                 except TypeError:
                     # Some versions might not accept the argument
                     show_method()
-        
+
         return buf.getvalue()
 
-    def __init__(self,
-                 phbst_fname,
-                 ind_q,
-                 is_little_cogroup=False,
-                 symprec=1e-5,
-                 degeneracy_tolerance=1e-5,
-                 log_level=0):
+class IrRepsPhonopy(IrRepsEigen):
+    """Irreps helper for direct phonopy calculations.
+
+    This class builds :class:`IrRepsEigen` from a phonopy params/YAML file
+    and a user-specified q-point, without involving anaddb/AbiPy.
+    """
+
+    def __init__(
+        self,
+        phonopy_params,
+        qpoint,
+        is_little_cogroup: bool = False,
+        symprec: float | None = None,
+        degeneracy_tolerance: float = 1e-5,
+        log_level: int = 0,
+    ) -> None:
+        """Build an :class:`IrRepsEigen` instance from a phonopy params file.
+
+        Args:
+            phonopy_params:
+                Path to a phonopy params/YAML file understood by
+                :func:`phonopy.load`, e.g. ``phonopy_params.yaml`` or
+                ``phonopy.yaml``.
+            qpoint:
+                Target q-point (fractional coordinates, length-3 iterable)
+                at which to compute phonon frequencies and eigenvectors.
+            is_little_cogroup:
+                Whether to use the little co-group setting.
+            symprec:
+                Precision for deciding the symmetry of the atomic structure.
+                If ``None``, an attempt is made to infer a suitable
+                value from the loaded phonopy object (e.g. its
+                symmetry tolerance), falling back to ``1e-5``.
+            degeneracy_tolerance:
+                Frequency tolerance used for degeneracy detection.
+            log_level:
+                Verbosity level of the underlying irreps machinery.
         """
-        phbst_fname: name of phbst file.
-        ind_q: index of the q point in the phbst.
-        is_little_cogroup: 
-        symprec: precision for deciding the symmetry of the atomic structure.
-        degeneracy_tolenrance: the tolerance of frequency difference in deciding the degeneracy.
-        log_level: how much information is in the output. 
+        # Load a Phonopy object from the saved params.
+        phonon = phonopy_load(phonopy_params)
+
+        q = np.asarray(qpoint, dtype=float)
+
+        # Compute frequencies and eigenvectors at the requested q-point.
+        phonon.run_qpoints([q], with_eigenvectors=True)
+        q_dict = phonon.get_qpoints_dict()
+
+        # q_dict["frequencies"][0] and q_dict["eigenvectors"][0]
+        # correspond to the first (and only) q-point.
+        freqs = np.array(q_dict["frequencies"][0], dtype=float)
+        eigvecs = np.array(q_dict["eigenvectors"][0], dtype=complex)
+
+        primitive_atoms = phonon.primitive
+
+        # Determine symmetry precision: prefer explicit user value, otherwise
+        # try to infer from the underlying phonopy symmetry object.
+        if symprec is None:
+            inferred = None
+            sym_obj = getattr(phonon, "_symmetry", None)
+            if sym_obj is not None:
+                # Phonopy has used this tolerance when building symmetry.
+                inferred = getattr(sym_obj, "_symmetry_tolerance", None)
+                if inferred is None:
+                    inferred = getattr(sym_obj, "tolerance", None)
+            if inferred is None:
+                inferred = 1e-5
+            symprec_value = float(inferred)
+        else:
+            symprec_value = float(symprec)
+
+        super().__init__(
+            primitive_atoms,
+            q,
+            freqs,
+            eigvecs,
+            is_little_cogroup=is_little_cogroup,
+            symprec=symprec_value,
+            degeneracy_tolerance=degeneracy_tolerance,
+            log_level=log_level,
+        )
+
+
+class IrRepsAnaddb(IrRepsEigen):
+    """Irreps helper tied to anaddb PHBST output.
+
+    This subclass is responsible only for constructing :class:`IrRepsEigen`
+    from anaddb PHBST data. All generic helpers such as
+    :meth:`get_summary_table`, :meth:`format_summary_table`, and
+    :meth:`get_verbose_output` are implemented in :class:`IrRepsEigen` so
+    they can be reused for other eigenvector sources.
+    """
+
+    def __init__(
+        self,
+        phbst_fname,
+        ind_q,
+        is_little_cogroup: bool = False,
+        symprec: float = 1e-5,
+        degeneracy_tolerance: float = 1e-5,
+        log_level: int = 0,
+    ) -> None:
+        """Build an :class:`IrRepsEigen` instance from anaddb PHBST output.
+
+        Args:
+            phbst_fname: Path to PHBST NetCDF file (e.g. ``run_PHBST.nc``).
+            ind_q: Index of the q-point in the PHBST file (0-based).
+            is_little_cogroup: Whether to use the little co-group setting.
+            symprec: Precision for deciding the symmetry of the atomic structure.
+            degeneracy_tolerance: Frequency tolerance used for degeneracy
+                detection.
+            log_level: Verbosity level of the underlying irreps machinery.
         """
-        atoms, qpoints, freqs, eig_vecs = read_phbst_freqs_and_eigvecs(
-            phbst_fname)
+        atoms, qpoints, freqs, eig_vecs = read_phbst_freqs_and_eigvecs(phbst_fname)
         primitive_atoms = ase_atoms_to_phonopy_atoms(atoms)
 
-        super().__init__(primitive_atoms,
-                         qpoints[ind_q],
-                         freqs[ind_q],
-                         eig_vecs[ind_q],
-
-                         is_little_cogroup=is_little_cogroup,
-                         symprec=symprec,
-                         degeneracy_tolerance=degeneracy_tolerance,
-                         log_level=log_level)
+        super().__init__(
+            primitive_atoms,
+            qpoints[ind_q],
+            freqs[ind_q],
+            eig_vecs[ind_q],
+            is_little_cogroup=is_little_cogroup,
+            symprec=symprec,
+            degeneracy_tolerance=degeneracy_tolerance,
+            log_level=log_level,
+        )
 
 
 def print_irreps(
@@ -467,24 +581,27 @@ def print_irreps(
     symprec=1e-5,
     degeneracy_tolerance=1e-4,
     log_level=0,
-    show_verbose=False
+    show_verbose=False,
 ):
-    """Compute and print irreps for a single q-point in one function call.
+    """Compute and print irreps for a single q-point from anaddb PHBST.
 
     This is a convenience function that combines object creation, computation,
     and printing into a single call for simple use cases.
 
     Args:
-        phbst_fname: Path to PHBST NetCDF file (e.g. run_PHBST.nc)
-        ind_q: Index of q-point in PHBST file (0-based)
-        is_little_cogroup: Use little co-group setting
-        symprec: Symmetry precision (default: 1e-5)
-        degeneracy_tolerance: Frequency difference tolerance for degeneracy (default: 1e-4)
-        log_level: Verbosity level (default: 0)
-        show_verbose: If True, also print verbose phonopy-style output (default: False)
+        phbst_fname: Path to PHBST NetCDF file (e.g. ``run_PHBST.nc``).
+        ind_q: Index of q-point in PHBST file (0-based).
+        is_little_cogroup: Use little co-group setting.
+        symprec: Symmetry precision (default: 1e-5).
+        degeneracy_tolerance: Frequency difference tolerance for degeneracy
+            (default: 1e-4).
+        log_level: Verbosity level (default: 0).
+        show_verbose: If True, also print verbose phonopy-style output
+            (default: False).
 
     Returns:
-        IrRepsAnaddb: The computed irreps object for further programmatic access
+        IrRepsAnaddb: The computed irreps object for further programmatic
+            access.
 
     Example:
         >>> from anaddb_irreps import print_irreps
@@ -499,14 +616,74 @@ def print_irreps(
         log_level=log_level,
     )
     irr.run()
-    
+
     # Print summary table
     print(irr.format_summary_table())
-    
+
     # Optionally print verbose output
     if show_verbose:
         print()
         print("# Verbose irreps output")
         print(irr.get_verbose_output())
-    
+
+    return irr
+
+
+def print_irreps_phonopy(
+    phonopy_params,
+    qpoint,
+    is_little_cogroup: bool = False,
+    symprec: float | None = None,
+    degeneracy_tolerance: float = 1e-4,
+    log_level: int = 0,
+    show_verbose: bool = False,
+):
+    """Compute and print irreps for a single q-point from phonopy params.
+
+    This is a convenience function that combines object creation, computation,
+    and printing into a single call for simple use cases using a phonopy
+    params/YAML file.
+
+    Args:
+        phonopy_params: Path to phonopy params/YAML file (e.g.
+            ``phonopy_params.yaml`` or ``phonopy.yaml``).
+        qpoint: Target q-point (fractional coordinates, length-3 iterable).
+        is_little_cogroup: Use little co-group setting.
+        symprec: Symmetry precision. If ``None`` (the default), this tries
+            to infer a suitable value from the phonopy object (e.g. the
+            symmetry tolerance recorded when the params were created),
+            falling back to ``1e-5``.
+        degeneracy_tolerance: Frequency difference tolerance for degeneracy
+            (default: 1e-4).
+        log_level: Verbosity level (default: 0).
+        show_verbose: If True, also print verbose phonopy-style output
+            (default: False).
+
+    Returns:
+        IrRepsPhonopy: The computed irreps object for further programmatic
+            access.
+
+    Example:
+        >>> from anaddb_irreps import print_irreps_phonopy
+        >>> irr = print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0])
+    """
+    irr = IrRepsPhonopy(
+        phonopy_params=phonopy_params,
+        qpoint=qpoint,
+        is_little_cogroup=is_little_cogroup,
+        symprec=symprec,
+        degeneracy_tolerance=degeneracy_tolerance,
+        log_level=log_level,
+    )
+    irr.run()
+
+    # Print summary table
+    print(irr.format_summary_table())
+
+    # Optionally print verbose output
+    if show_verbose:
+        print()
+        print("# Verbose irreps output")
+        print(irr.get_verbose_output())
+
     return irr

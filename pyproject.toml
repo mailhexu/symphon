@@ -16,8 +16,11 @@ dependencies = [
   "numpy>1.16.5",
   "ase>=3.19",
   "phonopy>=2.43.0",
-  "abipy==0.9.8",
+  "netCDF4",
 ]
+
+[project.optional-dependencies]
+abipy = ["abipy>=0.9.8"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Programming Language :: Python :: 3",
@@ -33,3 +36,4 @@ packages = ["anaddb_irreps"]
 
 [project.scripts]
 anaddb-irreps = "anaddb_irreps.cli:main"
+phonopy-irreps = "anaddb_irreps.cli:main_phonopy"

@@ -18,11 +18,11 @@ pip install .
 
 ## Usage (Python API)
 
-### Prerequisites
+### From anaddb PHBST (AbiPy)
 
 Run anaddb to get the PHBST file with phonon frequencies and eigenvectors. See example in `examples/MoS2_1T/anaddb_input/`.
 
-### Basic Usage
+#### Basic Usage
 
 ```python
 from anaddb_irreps import print_irreps
@@ -46,7 +46,27 @@ print_irreps(
 )
 ```
 
+### From phonopy params/YAML
+
+If you already have a phonopy params/YAML file (e.g. `phonopy_params.yaml` or
+`phonopy.yaml`), you can use the phonopy-based helper:
+
+```python
+from anaddb_irreps import print_irreps_phonopy
+
+irr = print_irreps_phonopy(
+    "phonopy_params.yaml",
+    qpoint=[0.0, 0.0, 0.0],
+    symprec=1e-5,
+    degeneracy_tolerance=1e-4,
+    log_level=0,
+    show_verbose=False,
+)
+```
+
 ### Parameters
+
+For `print_irreps` (anaddb route):
 
 - **phbst_fname** (str, required): Path to PHBST NetCDF file
 - **ind_q** (int, required): Index of q-point in PHBST file (0-based)
@@ -54,19 +74,29 @@ print_irreps(
 - **degeneracy_tolerance** (float): Frequency tolerance for degeneracy detection (default: 1e-4)
 - **is_little_cogroup** (bool): Use little co-group setting (default: False)
 - **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
-- **show_verbose** (bool): Show detailed phonopy irreps output (default: False) 
+- **show_verbose** (bool): Show detailed phonopy irreps output (default: False)
+
+For `print_irreps_phonopy` (phonopy route):
+
+- **phonopy_params** (str, required): Path to phonopy params/YAML file
+- **qpoint** (sequence of 3 floats, required): q-point in fractional coordinates
+- **symprec** (float or None): Symmetry precision for structure analysis. If `None` (or omitted), anaddb_irreps will try to use the symmetry tolerance recorded in the phonopy file (e.g. `phonopy.symmetry_tolerance` in the YAML), falling back to `1e-5` when not available.
+- **degeneracy_tolerance** (float): Frequency tolerance for degeneracy detection (default: 1e-4)
+- **is_little_cogroup** (bool): Use little co-group setting (default: False)
+- **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
+- **show_verbose** (bool): Show detailed phonopy irreps output (default: False)
  
 ## Usage (CLI)
 
-Use the `anaddb-irreps` command-line tool for quick command-line access.
+Use the `anaddb-irreps` and `phonopy-irreps` command-line tools for quick command-line access.
 
-### Basic Example
+### Basic Example (anaddb PHBST)
 
 ```bash
 anaddb-irreps --phbst run_PHBST.nc --q-index 0
 ```
 
-### With Options
+### With Options (anaddb PHBST)
 
 ```bash
 anaddb-irreps \
@@ -77,7 +107,17 @@ anaddb-irreps \
   --log-level 1
 ```
 
+### Basic Example (phonopy params)
+
+```bash
+phonopy-irreps \
+  --params phonopy_params.yaml \
+  --qpoint 0.0 0.0 0.0
+```
+
 ### CLI Options
+
+For `anaddb-irreps`:
 
 - `-p`, `--phbst` (required): Path to PHBST NetCDF file
 - `-q`, `--q-index` (required): Index of q-point in PHBST file (0-based)
@@ -86,7 +126,17 @@ anaddb-irreps \
 - `-l`, `--is-little-cogroup`: Use little co-group setting
 - `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
 
+For `phonopy-irreps`:
+
+- `-p`, `--params` (required): Path to phonopy params/YAML file
+- `--qpoint` (required): Three floats for q-point in fractional coordinates
+- `-s`, `--symprec`: Override symmetry precision. If omitted, anaddb_irreps will try to use the symmetry tolerance stored in the phonopy file, falling back to `1e-5`.
+- `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
+- `-l`, `--is-little-cogroup`: Use little co-group setting
+- `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
+
 The CLI produces the same output format as the Python API, showing q-point, point group, and a table of phonon modes with their irreducible representations and IR/Raman activity.
+
 
 ## Output Format
 

@@ -1,7 +1,14 @@
 import numpy as np
 from ase.data import atomic_masses
-import abipy.abilab as abilab
 from phonopy.structure.atoms import PhonopyAtoms
+
+try:
+    import abipy.abilab as abilab
+    HAS_ABIPY = True
+except ImportError:
+    HAS_ABIPY = False
+
+from .io_phbst import read_phbst_freqs_and_eigvecs as read_phbst_no_abipy
 
 
 def ase_atoms_to_phonopy_atoms(atoms):
@@ -47,35 +54,41 @@ def displacement_cart_to_evec(displ_cart,
 
 
 def read_phbst_freqs_and_eigvecs(fname):
-    ncfile = abilab.abiopen(fname)
-    struct = ncfile.structure
-    atoms = ncfile.structure.to_ase_atoms()
-    scaled_positions = struct.frac_coords
-
-    numbers = struct.atomic_numbers
-    masses = [atomic_masses[i] for i in numbers]
-
-    phbst = ncfile.phbands
-    qpoints = phbst.qpoints.frac_coords
-    nqpts = len(qpoints)
-    nbranch = 3 * len(numbers)
-    evecs = np.zeros([nqpts, nbranch, nbranch], dtype='complex128')
-
-    # Frequencies from abipy are in Hartree atomic units.
-    # Convert to THz for phonopy (which expects THz by default).
-    freqs_ha = phbst.phfreqs
-    ha_to_thz = phbst.phfactor_ev2units("THz")
-    freqs = freqs_ha * ha_to_thz
+    if not HAS_ABIPY:
+        return read_phbst_no_abipy(fname)
     
-    displ_carts = phbst.phdispl_cart
+    try:
+        ncfile = abilab.abiopen(fname)
+        struct = ncfile.structure
+        atoms = ncfile.structure.to_ase_atoms()
+        scaled_positions = struct.frac_coords
 
-    for iqpt, qpt in enumerate(qpoints):
-        for ibranch in range(nbranch):
-            evec = displacement_cart_to_evec(displ_carts[iqpt, ibranch, :],
-                                             masses,
-                                             scaled_positions,
-                                             qpoint=qpt,
-                                             add_phase=True)
-            evecs[iqpt, :, ibranch] = evec
+        numbers = struct.atomic_numbers
+        masses = [atomic_masses[i] for i in numbers]
 
-    return atoms, qpoints, freqs, evecs
+        phbst = ncfile.phbands
+        qpoints = phbst.qpoints.frac_coords
+        nqpts = len(qpoints)
+        nbranch = 3 * len(numbers)
+        evecs = np.zeros([nqpts, nbranch, nbranch], dtype='complex128')
+
+        # Frequencies from abipy are in eV.
+        # Convert to THz for phonopy (which expects THz by default).
+        freqs_ev = phbst.phfreqs
+        ev_to_thz = phbst.phfactor_ev2units("THz")
+        freqs = freqs_ev * ev_to_thz
+        
+        displ_carts = phbst.phdispl_cart
+
+        for iqpt, qpt in enumerate(qpoints):
+            for ibranch in range(nbranch):
+                evec = displacement_cart_to_evec(displ_carts[iqpt, ibranch, :],
+                                                 masses,
+                                                 scaled_positions,
+                                                 qpoint=qpt,
+                                                 add_phase=True)
+                evecs[iqpt, :, ibranch] = evec
+
+        return atoms, qpoints, freqs, evecs
+    except Exception:
+        return read_phbst_no_abipy(fname)
