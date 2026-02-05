@@ -134,15 +134,20 @@ class ReportingMixin:
         summary = self.get_summary_table()
 
         # Only show activity columns if we have activity data (supported by backend)
-        show_activity = getattr(self, "_backend", "phonopy") == "phonopy"
+        backend = getattr(self, "_backend", "phonopy")
+        show_activity = backend == "phonopy"
 
         lines = []
         if summary:
             qx, qy, qz = summary[0]["qpoint"]
             lines.append(f"q-point: [{qx:.4f}, {qy:.4f}, {qz:.4f}]")
-        point_group = getattr(self, "_pointgroup_symbol", None)
-        if point_group:
-            lines.append(f"Point group: {point_group}")
+        
+        group_symbol = getattr(self, "_pointgroup_symbol", None)
+        if group_symbol:
+            if backend == "irrep":
+                lines.append(f"Space group: {group_symbol}")
+            else:
+                lines.append(f"Point group: {group_symbol}")
         if lines:
             lines.append("")
 
