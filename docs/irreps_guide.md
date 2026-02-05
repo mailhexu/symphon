@@ -19,6 +19,7 @@ Phonon modes are labeled using Mulliken notation based on the symmetry of their 
 
 ### K-point Labels
 High-symmetry points in the Brillouin zone are labeled following the conventions of the **Bilbao Crystallographic Server (BCS)**:
+Take a simple cubic cell for example, the high-symmetry points are:
 - **GM**: $\Gamma$ point $(0, 0, 0)$
 - **X**: $(0, 1/2, 0)$ or $(1/2, 0, 0)$ depending on the lattice.
 - **M**: $(1/2, 1/2, 0)$
