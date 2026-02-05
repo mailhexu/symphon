@@ -31,11 +31,14 @@ Take a simple cubic cell for example, the high-symmetry points are:
 
 ### Backend 1: Phonopy (Standard $\Gamma$-point)
 At the $\Gamma$ point, the symmetry is governed by the full point group of the crystal. The character of the representation for a mode is simply:
+
 $$\chi(R) = \text{Tr}(\mathbf{R})$$
+
 where $\mathbf{R}$ is the 3x3 rotation matrix. The label is found by matching the calculated character table of the phonon modes against the hardcoded character tables in `phonopy`.
 
 ### Backend 2: Irrep Package (Arbitrary $q$)
 For non-Gamma points, the symmetry is governed by the **Little Group of $q$**, denoted $G_q$, which consists of all space group operations $\{R|\boldsymbol{\tau}\}$ that leave $q$ invariant modulo a reciprocal lattice vector $\mathbf{K}$:
+
 $$\mathbf{R}\mathbf{q} = \mathbf{q} + \mathbf{K}$$
 
 #### Transformation of Displacement Vectors
