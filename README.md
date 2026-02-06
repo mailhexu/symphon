@@ -16,7 +16,8 @@ pip install "anaddb_irreps[irrep]"
 
 ## Documentation
 
-For a detailed explanation of the mathematics, notation (Mulliken labels), and a tutorial for labeling non-Gamma phonons (like the X and M points in BaTiO3), see the **[Irreducible Representation Labeling Guide](docs/irreps_guide.md)**.
+- **[Irreducible Representation Labeling Guide](docs/irreps_guide.md)**: A detailed explanation of the mathematics, Mulliken notation, and a tutorial for labeling non-Gamma phonons (e.g., X and M points in BaTiO3).
+- **[IR and Raman Activity Methodology](docs/activity_methodology.md)**: A scientific guide to the group-theoretical method used to identify spectroscopic activity, with a case study of TmFeO3.
 
 ## Usage (Python API)
 
