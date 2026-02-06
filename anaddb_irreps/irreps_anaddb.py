@@ -43,18 +43,11 @@ class ReportingMixin:
 
         raman_ir = getattr(self, "_RamanIR_labels", None)
         if raman_ir is not None:
-            ir_dict, raman_dict = raman_ir
-
-            # IR: any non-None label associated with x, y, or z is IR-active.
-            for lbl in ir_dict.values():
-                if lbl:
-                    ir_active_map[lbl] = True
-
-            # Raman: labels present in any quadratic component.
-            for labels in raman_dict.values():
-                for lbl in labels:
-                    if lbl:
-                        raman_active_map[lbl] = True
+            ir_labels, raman_labels = raman_ir
+            for lbl in ir_labels:
+                ir_active_map[lbl] = True
+            for lbl in raman_labels:
+                raman_active_map[lbl] = True
 
         # Extract labels using degenerate sets and _ir_labels when using phonopy backend.
         # If _irreps is already list of dicts (irrep backend), we use it directly.
@@ -306,150 +299,60 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         symmetry operations to determine which irreps are IR- and
         Raman-active.
         """
+        # Multiplicity formula: n_i = 1/g * sum_R chi_i(R)* * chi_reducible(R)
+        # For IR activity, chi_reducible(R) = Tr(R_cart)
+        # For Raman activity, chi_reducible(R) = 1/2 * [Tr(R_cart)^2 + Tr(R_cart^2)]
+        
+        # In any basis (including fractional), the trace is invariant.
+        # So we can use the character table's mapping_table matrices directly.
+        
+        ir_active = set()
+        raman_active = set()
+        
+        if self._pointgroup_symbol not in character_table:
+            return ir_active, raman_active
+            
+        # character_table[symbol] is a list of table variants. 
+        # Usually we just need the first one that matches our rotations.
+        # Phonopy's _get_rotation_symbols already found the correct one and
+        # stored it in self._character_table.
+        
+        if not self._character_table:
+            return ir_active, raman_active
 
-        # make symops in cartesian space
-        rprim = self._primitive.cell  # np.identity(3)
-        gprim = np.linalg.inv(rprim).T
-        # print(" R G ", rprim, gprim)
-        # print("rot ", self._rotations_at_q)
-
-        # make cartesian symop matrices for each operation in each class
-        # then get characters for IR and Raman reducible representations
-        nclass = len(self._character_table["rotation_list"])
-        self._cartesian_rotations_at_q = np.zeros([nclass, 96, 3, 3])
-        degenclass = np.zeros(nclass)
-        characters_xyz = np.zeros(nclass)
-        chardegen_xyz = np.zeros(nclass)
-        characters_x2 = np.zeros(nclass)
-        chardegen_x2 = np.zeros(nclass)
-        iclass = 0
-        for opclass in self._character_table["mapping_table"].keys():
-            degenclass[iclass] = len(self._character_table["mapping_table"][opclass])
-            iop = 0
-            for symop in np.array(self._character_table["mapping_table"][opclass][:]):
-                # print("rotred ", symop)
-                self._cartesian_rotations_at_q[iclass][iop] = np.dot(
-                    rprim, np.dot(symop, gprim.T)
-                )
-                # print(" rotcart ", self._cartesian_rotations_at_q[isym])
-
-                # m = self._cartesian_rotations_at_q[iclass][iop]
-                # character_x2_iop =  np.matrix.trace(np.block([[m*m[0,0], m*m[0,1], m*m[0,2]],\
-                #                                              [m*m[1,0], m*m[1,1], m*m[1,2]],\
-                #                                              [m*m[2,0], m*m[2,1], m*m[2,2]]]))
-                # print("class ", opclass, " op ", iop, " character ", character_x2_iop)
-
-                iop += 1
-
-            m = self._cartesian_rotations_at_q[iclass][0]
-            # get representation characters for x,y,z functions
-            characters_xyz[iclass] = np.matrix.trace(m)
-
-            # get representation characters for quadratic functions
-            # line below is in x2 xy y2 xz yz z2 format
-            bigmat = np.zeros([6, 6])
-            ibig = 0
-            for ixyz in range(3):
-                for ixyz_prime in range(ixyz + 1):
-                    outprod = np.ndarray.flatten(np.outer(m[:, ixyz], m[:, ixyz_prime]))
-                    bigmat[ibig, :] = [
-                        outprod[0],
-                        outprod[1] + outprod[3],
-                        outprod[4],
-                        outprod[2] + outprod[6],
-                        outprod[5] + outprod[7],
-                        outprod[8],
-                    ]
-
-                    ibig += 1
-            # print(" class ", iclass, opclass, " x2 matrix", bigmat)
-
-            characters_x2[iclass] = np.matrix.trace(bigmat)
-            # print(" class ", iclass, "x2 charac ", characters_x2[iclass])
-
-            chardegen_xyz[iclass] = characters_xyz[iclass] * degenclass[iclass]
-            chardegen_x2[iclass] = characters_x2[iclass] * degenclass[iclass]
-            # print("xyz charac ", characters_xyz[iclass], " degen ", self._degenclass[iclass])
-            iclass += 1
-
-        # now we have red representations, project them into irreps
-        # print("irrep  characters g = ", self._g)
-        xyzlabels = ["x", "y", "z"]
-        x2labels = ["x^2", "xy", "y^2", "xz", "yz", "z^2"]
-        IR_dict = {"x": None, "y": None, "z": None}
-        Raman_dict = {"x^2": [], "xy": [], "y^2": [], "xz": [], "yz": [], "z^2": []}
-
-        # loop over irreducible representations
-        i_ir = 0
-        for irreplabel in self._character_table["character_table"].keys():
-            # characters
-            irr_char = self._character_table["character_table"][irreplabel]
-            # l_n dimention of current irreps
-            len_irr = irr_char[0]
-            # number of ir modes here
-            n_ir = int(np.dot(irr_char, chardegen_xyz) / self._g)
-            # number of Raman modes here
-            n_ram = int(np.dot(irr_char, chardegen_x2) / self._g)
-            # print(irreplabel, " nir ", n_ir, " nram ", n_ram, " irchar ", irr_char)
-
-            # find eigenvectors: are x y or z isolated in representation?
-            # IR
-            for ixyz in range(3):
-                xyzvec = np.zeros(3)
-                for iclass in range(len(self._character_table["mapping_table"].keys())):
-                    opclass = list(self._character_table["mapping_table"].keys())[iclass]
-                    degenclass = len(self._character_table["mapping_table"][opclass][:])
-                    for iop in range(degenclass):
-                        xyzvec += (
-                            irr_char[iclass]
-                            * self._cartesian_rotations_at_q[iclass][iop][ixyz, :]
-                        )
-                xyzvec *= len_irr / self._g
-                if np.linalg.norm(xyzvec) > 1.0e-6:
-                    IR_dict[xyzlabels[ixyz]] = irreplabel
-
-            # find the irreps which contain each of the quadratic functions (not full
-            # linear combination basis functions, but still)
-            # Raman
-            ibig = 0
-            bigvec = np.zeros(6)
-            for ixyz in range(3):
-                for ixyz_prime in range(ixyz + 1):
-                    x2vec = np.zeros(6)
-                    # loop over all operations
-                    for iclass in range(
-                        len(self._character_table["mapping_table"].keys())
-                    ):
-                        opclass = list(self._character_table["mapping_table"].keys())[iclass]
-                        degenclass = len(self._character_table["mapping_table"][opclass][:])
-                        for iop in range(degenclass):
-                            m = self._cartesian_rotations_at_q[iclass][iop]
-                            outprod = np.ndarray.flatten(
-                                np.outer(m[:, ixyz], m[:, ixyz_prime])
-                            )
-                            bigvec = np.array(
-                                [
-                                    outprod[0],
-                                    outprod[1] + outprod[3],
-                                    outprod[4],
-                                    outprod[2] + outprod[6],
-                                    outprod[5] + outprod[7],
-                                    outprod[8],
-                                ]
-                            )
-                            x2vec += irr_char[iclass] * bigvec
-
-                    x2vec *= len_irr / self._g
-                    if np.linalg.norm(x2vec) > 1.0e-6:
-                        # print(x2labels[ibig], " belongs to ", irreplabel , " norm ",
-                        #       np.linalg.norm(x2vec))
-                        Raman_dict[x2labels[ibig]].append(irreplabel)
-
-                    ibig += 1
-            # loop over irreps
-            i_ir += 1
-
-        return IR_dict, Raman_dict
+        # 1. Precalculate characters of reducible representations for each class
+        mapping = self._character_table["mapping_table"]
+        g = 0
+        chi_ir_class = []
+        chi_raman_class = []
+        
+        for op_class in mapping:
+            ops = mapping[op_class]
+            g += len(ops)
+            # All ops in a class have same trace
+            R = np.array(ops[0])
+            tr_R = np.trace(R)
+            chi_ir_class.append(tr_R)
+            chi_raman_class.append(0.5 * (tr_R**2 + np.trace(np.dot(R, R))))
+            
+        # 2. Identify active irreps
+        for label, irrep_chars in self._character_table["character_table"].items():
+            n_ir = 0
+            n_ram = 0
+            for iclass, op_class in enumerate(mapping):
+                degen = len(mapping[op_class])
+                n_ir += np.conj(irrep_chars[iclass]) * chi_ir_class[iclass] * degen
+                n_ram += np.conj(irrep_chars[iclass]) * chi_raman_class[iclass] * degen
+            
+            n_ir = np.abs(n_ir) / g
+            n_ram = np.abs(n_ram) / g
+            
+            if n_ir > 0.5:
+                ir_active.add(label)
+            if n_ram > 0.5:
+                raman_active.add(label)
+                
+        return ir_active, raman_active
 
 class IrRepsPhonopy(IrRepsEigen):
     """Irreps helper for direct phonopy calculations."""
