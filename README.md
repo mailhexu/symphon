@@ -5,16 +5,19 @@ A simple wrapper of the phonopy irreps module for finding irreducible representa
 ## Installation
 
 Install from PyPI:
-
-```
+```bash
 pip install anaddb_irreps
 ```
 
-Or from source:
+To enable support for **non-Gamma phonons**, install with the `irrep` backend:
+```bash
+pip install "anaddb_irreps[irrep]"
+```
 
-```
-pip install .
-```
+## Documentation
+
+- **[Irreducible Representation Labeling Guide](docs/irreps_guide.md)**: A detailed explanation of the mathematics, Mulliken notation, and a tutorial for labeling non-Gamma phonons (e.g., X and M points in BaTiO3).
+- **[IR and Raman Activity Methodology](docs/activity_methodology.md)**: A scientific guide to the group-theoretical method used to identify spectroscopic activity, with a case study of TmFeO3.
 
 ## Usage (Python API)
 

@@ -80,6 +80,21 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "-b",
+        "--backend",
+        type=str,
+        default="phonopy",
+        choices=["phonopy", "irrep"],
+        help="Backend driver to use for irrep identification (default: phonopy)",
+    )
+    parser.add_argument(
+        "-k",
+        "--kpname",
+        type=str,
+        default=None,
+        help="k-point name (e.g. GM, X, M) used by 'irrep' backend",
+    )
     return parser.parse_args()
 
 
@@ -94,8 +109,9 @@ def main() -> None:
         symprec=args.symprec,
         degeneracy_tolerance=args.degeneracy_tolerance,
         log_level=args.log_level,
+        backend=args.backend,
     )
-    irr.run()
+    irr.run(kpname=args.kpname)
 
     # 1) Always show concise summary table (including IR/Raman activity)
     print(irr.format_summary_table())
@@ -197,6 +213,21 @@ def parse_args_phonopy() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "-b",
+        "--backend",
+        type=str,
+        default="phonopy",
+        choices=["phonopy", "irrep"],
+        help="Backend driver to use for irrep identification (default: phonopy)",
+    )
+    parser.add_argument(
+        "-k",
+        "--kpname",
+        type=str,
+        default=None,
+        help="k-point name (e.g. GM, X, M) used by 'irrep' backend",
+    )
     return parser.parse_args()
 
 
@@ -211,8 +242,9 @@ def main_phonopy() -> None:
         symprec=args.symprec,
         degeneracy_tolerance=args.degeneracy_tolerance,
         log_level=args.log_level,
+        backend=args.backend,
     )
-    irr.run()
+    irr.run(kpname=args.kpname)
 
     # 1) Always show concise summary table (including IR/Raman activity)
     print(irr.format_summary_table())
