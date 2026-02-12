@@ -2,179 +2,96 @@
 
 A simple wrapper of the phonopy irreps module for finding irreducible representations of phonon modes in ABINIT's anaddb output.
 
+## Features
+
+- **Multiple input formats**: Supports both anaddb PHBST NetCDF files and phonopy params/YAML files
+- **Dual backend support**:
+  - `phonopy` backend: Standard Γ-point analysis with IR/Raman activity identification
+  - `irrep` backend: Non-Gamma point analysis using the `irrep` package
+- **CLI and Python API**: Flexible usage through command-line tools or Python functions
+- **Complete symmetry information**: Reports both space group and point group for the crystal
+- **Spectroscopic activity**: Identifies IR- and Raman-active modes (at Γ point)
+
 ## Installation
+
+### Basic Installation
 
 Install from PyPI:
 ```bash
 pip install anaddb_irreps
 ```
 
-To enable support for **non-Gamma phonons**, install with the `irrep` backend:
+### Optional Dependencies
+
+For **non-Gamma phonons** (k-points other than Γ), install with the `irrep` backend:
 ```bash
 pip install "anaddb_irreps[irrep]"
 ```
 
+For **ABINIT support** (reading PHBST NetCDF files), install with the `abipy` optional dependency:
+```bash
+pip install "anaddb_irreps[abipy]"
+```
+
+To install all optional dependencies:
+```bash
+pip install "anaddb_irreps[irrep,abipy]"
+```
+
 ## Documentation
 
-- **[Irreducible Representation Labeling Guide](docs/irreps_guide.md)**: A detailed explanation of the mathematics, Mulliken notation, and a tutorial for labeling non-Gamma phonons (e.g., X and M points in BaTiO3).
-- **[IR and Raman Activity Methodology](docs/activity_methodology.md)**: A scientific guide to the group-theoretical method used to identify spectroscopic activity, with a case study of TmFeO3.
+- **[Usage Guide](docs/usage.md)**: Complete API and CLI reference with examples for all features
+- **[Irreducible Representation Labeling Guide](docs/irreps_guide.md)**: Mathematical foundations, Mulliken notation, and tutorial for non-Gamma phonons (e.g., X and M points in BaTiO3)
+- **[IR and Raman Activity Methodology](docs/activity_methodology.md)**: Scientific guide to the group-theoretical method used to identify spectroscopic activity, with TmFeO3 case study
 
-## Usage (Python API)
+## Quick Start
 
-### From anaddb PHBST (AbiPy)
-
-Run anaddb to get the PHBST file with phonon frequencies and eigenvectors. See example in `examples/MoS2_1T/anaddb_input/`.
-
-#### Basic Usage
-
-```python
-from anaddb_irreps import print_irreps
-
-# Simple usage
-print_irreps("run_PHBST.nc", ind_q=0)
-```
-
-### With Options
-
-```python
-from anaddb_irreps import print_irreps
-
-print_irreps(
-    "run_PHBST.nc",
-    ind_q=0,
-    symprec=1e-8,              # Symmetry precision (default: 1e-5)
-    degeneracy_tolerance=1e-4, # Frequency tolerance (default: 1e-4)
-    log_level=1,               # Verbosity: 0=quiet, 1+=verbose (default: 0)
-    show_verbose=True          # Show detailed phonopy output (default: False)
-)
-```
-
-### From phonopy params/YAML
-
-If you already have a phonopy params/YAML file (e.g. `phonopy_params.yaml` or
-`phonopy.yaml`), you can use the phonopy-based helper:
+### Python API
 
 ```python
 from anaddb_irreps import print_irreps_phonopy
 
-irr = print_irreps_phonopy(
+# Analyze Gamma point
+print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0])
+
+# Analyze non-Gamma point (requires irrep backend)
+print_irreps_phonopy(
     "phonopy_params.yaml",
-    qpoint=[0.0, 0.0, 0.0],
-    symprec=1e-5,
-    degeneracy_tolerance=1e-4,
-    log_level=0,
-    show_verbose=False,
+    qpoint=[0.5, 0.5, 0],
+    backend="irrep",
+    kpname="M"
 )
 ```
 
-### Parameters
-
-For `print_irreps` (anaddb route):
-
-- **phbst_fname** (str, required): Path to PHBST NetCDF file
-- **ind_q** (int, required): Index of q-point in PHBST file (0-based)
-- **symprec** (float): Symmetry precision for structure analysis (default: 1e-5)
-- **degeneracy_tolerance** (float): Frequency tolerance for degeneracy detection (default: 1e-4)
-- **is_little_cogroup** (bool): Use little co-group setting (default: False)
-- **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
-- **show_verbose** (bool): Show detailed phonopy irreps output (default: False)
-
-For `print_irreps_phonopy` (phonopy route):
-
-- **phonopy_params** (str, required): Path to phonopy params/YAML file
-- **qpoint** (sequence of 3 floats, required): q-point in fractional coordinates
-- **symprec** (float or None): Symmetry precision for structure analysis. If `None` (or omitted), anaddb_irreps will try to use the symmetry tolerance recorded in the phonopy file (e.g. `phonopy.symmetry_tolerance` in the YAML), falling back to `1e-5` when not available.
-- **degeneracy_tolerance** (float): Frequency tolerance for degeneracy detection (default: 1e-4)
-- **is_little_cogroup** (bool): Use little co-group setting (default: False)
-- **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
-- **show_verbose** (bool): Show detailed phonopy irreps output (default: False)
- 
-## Usage (CLI)
-
-Use the `anaddb-irreps` and `phonopy-irreps` command-line tools for quick command-line access.
-
-### Basic Example (anaddb PHBST)
+### Command Line
 
 ```bash
-anaddb-irreps --phbst run_PHBST.nc --q-index 0
+# Analyze Gamma point
+phonopy-irreps --params phonopy_params.yaml --qpoint 0 0 0
+
+# Analyze non-Gamma point
+phonopy-irreps --params phonopy_params.yaml --qpoint 0 0.5 0 --backend irrep --kpname X
 ```
 
-### With Options (anaddb PHBST)
-
-```bash
-anaddb-irreps \
-  --phbst run_PHBST.nc \
-  --q-index 0 \
-  --symprec 1e-8 \
-  --degeneracy-tolerance 1e-4 \
-  --log-level 1
-```
-
-### Basic Example (phonopy params)
-
-```bash
-phonopy-irreps \
-  --params phonopy_params.yaml \
-  --qpoint 0.0 0.0 0.0
-```
-
-### CLI Options
-
-For `anaddb-irreps`:
-
-- `-p`, `--phbst` (required): Path to PHBST NetCDF file
-- `-q`, `--q-index` (required): Index of q-point in PHBST file (0-based)
-- `-s`, `--symprec`: Symmetry precision (default: 1e-5)
-- `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
-- `-l`, `--is-little-cogroup`: Use little co-group setting
-- `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
-
-For `phonopy-irreps`:
-
-- `-p`, `--params` (required): Path to phonopy params/YAML file
-- `--qpoint` (required): Three floats for q-point in fractional coordinates
-- `-s`, `--symprec`: Override symmetry precision. If omitted, anaddb_irreps will try to use the symmetry tolerance stored in the phonopy file, falling back to `1e-5`.
-- `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
-- `-l`, `--is-little-cogroup`: Use little co-group setting
-- `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
-
-The CLI produces the same output format as the Python API, showing q-point, point group, and a table of phonon modes with their irreducible representations and IR/Raman activity.
-
-
-## Output Format
-
-The output includes:
-
-1. **Q-point coordinates** in fractional coordinates
-2. **Point group** of the structure at that q-point
-3. **Mode table** with columns:
-   - `qx, qy, qz`: q-point coordinates (repeated for each mode)
-   - `band`: Mode index (0-based)
-   - `freq(THz)`: Frequency in THz
-   - `freq(cm-1)`: Frequency in cm⁻¹
-   - `label`: Irreducible representation label (e.g., Eu, Eg, A1g)
-   - `IR`: IR activity (`Y` = active, `.` = inactive)
-   - `Raman`: Raman activity (`Y` = active, `.` = inactive)
-
-### Example Output
+## Output
 
 ```
-q-point: [0.0000, 0.0000, 0.0000]
-Point group: -3m
+q-point: [0.0000, 0.5000, 0.0000]
+Space group: Pm-3m
+Point group: m-3m
 
-# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman
- 0.0000  0.0000  0.0000     0      0.0000         0.00  -            .    .  
- 0.0000  0.0000  0.0000     1      0.0000         0.00  -            .    .  
- 0.0000  0.0000  0.0000     2      0.0000         0.00  -            .    .  
- 0.0000  0.0000  0.0000     3      6.4001       213.49  Eu           Y    .  
- 0.0000  0.0000  0.0000     4      6.4001       213.49  Eu           Y    .  
- 0.0000  0.0000  0.0000     5      6.8617       228.88  Eg           .    Y  
- 0.0000  0.0000  0.0000     6      6.8617       228.88  Eg           .    Y  
- 0.0000  0.0000  0.0000     7     11.1626       372.34  A1g          .    Y  
- 0.0000  0.0000  0.0000     8     11.3152       377.43  A2u          Y    .  
+# qx      qy      qz      band  freq(THz)   freq(cm-1)   label
+  0.0000  0.5000  0.0000     0     -4.8804      -162.79  X5+
+  0.0000  0.5000  0.0000     1     -4.8804      -162.79  X5+
+  0.0000  0.5000  0.0000     2      3.3171       110.65  X5-
 ```
 
 ## Examples
 
-See `examples/MoS2_1T/` for a complete working example with MoS2 1T structure.
+See `examples/MoS2_1T/` for a complete working example with MoS2 1T structure using anaddb output.
 
+See `docs/irreps_guide.md` for BaTiO3 examples demonstrating both Gamma and non-Gamma point analysis.
+
+## License
+
+BSD-2-clause
