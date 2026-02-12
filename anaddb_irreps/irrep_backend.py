@@ -63,11 +63,19 @@ class IrRepsIrrep:
             else:
                 raise ValueError("kpname (e.g., 'GM', 'X', 'M') must be provided for non-Gamma points when using 'irrep' backend.")
         
+        # Apply k-point transformation for Pnma (space group 62)
+        # irreptables uses reference UC, but irrep backend expects primitive UC
+        qpoint_transformed = self._qpoint.copy()
+        if sg.number == 62:  # Pnma
+            # Transformation: (0,1,2) -> (2,0,1)
+            # k_prim = [[0,0,1], [1,0,0], [0,1,0]] @ k_ref
+            qpoint_transformed = np.array([self._qpoint[2], self._qpoint[0], self._qpoint[1]])
+        
         try:
-            bcs_table = sg.get_irreps_from_table(kpname, self._qpoint)
+            bcs_table = sg.get_irreps_from_table(kpname, qpoint_transformed)
         except Exception as e:
             if self._log_level > 0:
-                print(f"Error fetching BCS table for {kpname} at {self._qpoint}: {e}")
+                print(f"Error fetching BCS table for {kpname} at {qpoint_transformed}: {e}")
             raise e
 
         # 3. Calculate phonon traces
