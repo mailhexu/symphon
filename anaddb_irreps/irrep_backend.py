@@ -2,6 +2,7 @@ import numpy as np
 from phonopy.phonon.degeneracy import degenerate_sets
 from ase.data import atomic_masses
 import logging
+import spglib
 
 try:
     from irrep.spacegroup_irreps import SpaceGroupIrreps
@@ -27,6 +28,7 @@ class IrRepsIrrep:
         self._irreps = None
         self._degenerate_sets = None
         self._pointgroup_symbol = None
+        self._spacegroup_symbol = None
         self._RamanIR_labels = None # Not implemented for non-gamma in this backend yet
         
     def run(self, kpname=None):
@@ -41,8 +43,16 @@ class IrRepsIrrep:
             verbosity=self._log_level
         )
         
-        self._pointgroup_symbol = sg.name
+        self._spacegroup_symbol = sg.name
         self._degenerate_sets = degenerate_sets(self._freqs)
+        
+        # Get point group from symmetry operations
+        rotations = np.array([sym.rotation for sym in sg.symmetries], dtype=int)
+        pg_result = spglib.get_pointgroup(rotations)
+        if pg_result:
+            self._pointgroup_symbol = pg_result[0]
+        else:
+            self._pointgroup_symbol = None
         
         # 2. Get BCS character table for the q-point
         # If kpname is not provided, try to infer it from the qpoint

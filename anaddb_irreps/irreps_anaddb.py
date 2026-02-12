@@ -135,12 +135,13 @@ class ReportingMixin:
             qx, qy, qz = summary[0]["qpoint"]
             lines.append(f"q-point: [{qx:.4f}, {qy:.4f}, {qz:.4f}]")
         
-        group_symbol = getattr(self, "_pointgroup_symbol", None)
-        if group_symbol:
-            if backend == "irrep":
-                lines.append(f"Space group: {group_symbol}")
-            else:
-                lines.append(f"Point group: {group_symbol}")
+        space_group = getattr(self, "_spacegroup_symbol", None)
+        point_group = getattr(self, "_pointgroup_symbol", None)
+        
+        if space_group:
+            lines.append(f"Space group: {space_group}")
+        if point_group:
+            lines.append(f"Point group: {point_group}")
         if lines:
             lines.append("")
 
@@ -232,6 +233,7 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             self._irreps = self._backend_obj._irreps
             self._degenerate_sets = self._backend_obj._degenerate_sets
             self._pointgroup_symbol = self._backend_obj._pointgroup_symbol
+            self._spacegroup_symbol = self._backend_obj._spacegroup_symbol
             return res
 
         # Existing phonopy logic
@@ -248,6 +250,9 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
 
         import spglib
         self._pointgroup_symbol, _, _ = spglib.get_pointgroup(self._rotations_at_q)
+        
+        # Get space group symbol from symmetry dataset
+        self._spacegroup_symbol = self._symmetry_dataset.international
 
         (self._transformation_matrix, self._conventional_rotations,) = self._get_conventional_rotations()
 
