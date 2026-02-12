@@ -141,7 +141,7 @@ class IrRepsIrrep:
                 for j in range(num_atoms):
                     diff = new_pos - positions[j]
                     diff_round = np.round(diff)
-                    if np.allclose(diff - diff_round, 0, atol=1e-5):
+                    if np.allclose(diff - diff_round, 0, atol=self._symprec):
                         perm.append(j)
                         phases.append(np.exp(-2j * np.pi * np.dot(self._qpoint, diff_round)))
                         found = True
