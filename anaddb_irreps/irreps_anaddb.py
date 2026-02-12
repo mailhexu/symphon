@@ -246,6 +246,15 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
 
     def run(self, kpname=None) -> bool:
         if self._backend == "irrep":
+            # Special case: at Gamma with both_labels=True, use phonopy backend 
+            # which will automatically also run irrep backend for dual display
+            is_gamma = (abs(self._qpoint) < self._symprec).all()
+            if self._both_labels and is_gamma:
+                # Switch to phonopy backend temporarily - it will handle both_labels
+                self._backend = "phonopy"
+                return self.run(kpname=kpname)
+            
+            # Normal irrep backend path (non-Gamma or no both_labels)
             from .irrep_backend import IrRepsIrrep
             self._backend_obj = IrRepsIrrep(
                 primitive=self._primitive,

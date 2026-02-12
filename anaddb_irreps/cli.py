@@ -141,7 +141,8 @@ def parse_args_phonopy() -> argparse.Namespace:
         prog="phonopy-irreps",
         description=(
             "Compute irreducible representations of phonon modes from phonopy "
-            "params/YAML output using anaddb_irreps (phonopy wrapper)."
+            "params/YAML output. By default, analyzes all high-symmetry k-points "
+            "automatically using the irrep backend."
         ),
     )
 
@@ -156,15 +157,6 @@ def parse_args_phonopy() -> argparse.Namespace:
         ),
     )
 
-    parser.add_argument(
-        "--qpoint",
-        nargs=3,
-        type=float,
-        metavar=("QX", "QY", "QZ"),
-        required=True,
-        help="Target q-point in fractional coordinates (three floats)",
-    )
- 
     parser.add_argument(
         "-s",
         "--symprec",
@@ -219,56 +211,37 @@ def parse_args_phonopy() -> argparse.Namespace:
         ),
     )
 
-    parser.add_argument(
-        "-b",
-        "--backend",
-        type=str,
-        default="phonopy",
-        choices=["phonopy", "irrep"],
-        help="Backend driver to use for irrep identification (default: phonopy)",
-    )
-    parser.add_argument(
-        "-k",
-        "--kpname",
-        type=str,
-        default=None,
-        help="k-point name (e.g. GM, X, M) used by 'irrep' backend",
-    )
-    parser.add_argument(
-        "--all-high-symmetry",
-        action="store_true",
-        help="Analyze all high-symmetry k-points from irrep package (only works with --backend irrep)",
-    )
-    
-    parser.add_argument(
-        "--both-labels",
-        action="store_true",
-        help="For Gamma point: show both phonopy (Mulliken) and irrep (BCS) labels",
-    )
     return parser.parse_args()
 
 
-def _analyze_all_high_symmetry(phonopy_params, args):
-    """Analyze all high-symmetry k-points using irrep backend."""
+def main_phonopy() -> None:
+    """Entry point for phonopy-irreps CLI.
+    
+    Automatically discovers and analyzes all high-symmetry k-points using the
+    irrep backend. At Gamma point, shows both Mulliken and BCS labels.
+    """
     from irrep.spacegroup_irreps import SpaceGroupIrreps
     from irreptables import IrrepTable
-    from .irreps_anaddb import IrRepsPhonopy
-    import numpy as np
-    
-    # Load phonopy structure
     from phonopy import load as phonopy_load
-    phonon = phonopy_load(phonopy_params)
+    
+    args = parse_args_phonopy()
+    
+    # Load phonopy structure to get space group
+    phonon = phonopy_load(args.phonopy_params)
     cell = phonon.primitive.cell
     positions = phonon.primitive.scaled_positions
     numbers = phonon.primitive.numbers
     
-    # Create SpaceGroupIrreps
+    # Determine symmetry precision
+    symprec = args.symprec if args.symprec is not None else 1e-5
+    
+    # Create SpaceGroupIrreps to get space group info
     sg = SpaceGroupIrreps.from_cell(
         cell=(cell, positions, numbers),
         spinor=False,
         include_TR=False,
         search_cell=True,
-        symprec=args.symprec if args.symprec else 1e-5,
+        symprec=symprec,
         verbosity=args.log_level
     )
     
@@ -280,76 +253,54 @@ def _analyze_all_high_symmetry(phonopy_params, args):
     for irrep in irrep_table.irreps:
         if hasattr(irrep, 'kpname') and irrep.kpname and hasattr(irrep, 'k'):
             kpname = irrep.kpname
-            k = irrep.k
-            if kpname not in ['GM', 'R', 'M', 'X']:
-                continue
-            key = (kpname, tuple(k.tolist()))
-            if key not in high_sym_points:
-                high_sym_points[key] = kpname
+            k = tuple(irrep.k.tolist())
+            if kpname not in high_sym_points:
+                high_sym_points[kpname] = k
     
-    # Print what we found
+    # Print header with space group info
     print(f"Space group: {sg.name}")
     print(f"Found {len(high_sym_points)} high-symmetry points:")
-    for (kpname, k), label in sorted(high_sym_points.items()):
-        print(f"  {label}: k={k}")
+    for kpname in sorted(high_sym_points.keys()):
+        k = high_sym_points[kpname]
+        print(f"  {kpname}: k={k}")
     print()
     
     # Analyze each high-symmetry point
-    for (kpname, k), label in sorted(high_sym_points.items()):
-        print(f"\n# {label} point (k={k})")
+    for kpname in sorted(high_sym_points.keys()):
+        k = high_sym_points[kpname]
+        print(f"\n# {kpname} point (k={k})")
         print("=" * 60)
         
+        # At Gamma, use both labels; otherwise just irrep backend
+        is_gamma = all(abs(x) < 1e-6 for x in k)
+        
         irr = IrRepsPhonopy(
-            phonopy_params=phonopy_params,
+            phonopy_params=args.phonopy_params,
             qpoint=k,
             is_little_cogroup=args.is_little_cogroup,
-            symprec=args.symprec,
+            symprec=symprec,
             degeneracy_tolerance=args.degeneracy_tolerance,
             log_level=args.log_level,
             backend="irrep",
-            both_labels=False,
+            both_labels=is_gamma,  # Dual labels only at Gamma
         )
-        irr.run(kpname=label)
+        irr.run(kpname=kpname)
         print(irr.format_summary_table())
-
-
-def main_phonopy() -> None:
-    """Entry point for phonopy-irreps CLI."""
-    args = parse_args_phonopy()
-    
-    if args.all_high_symmetry:
-        if args.backend != "irrep":
-            print("--all-high-symmetry option requires --backend irrep")
-            return
-        _analyze_all_high_symmetry(args.phonopy_params, args)
-        return
-
-    irr = IrRepsPhonopy(
-        phonopy_params=args.phonopy_params,
-        qpoint=args.qpoint,
-        is_little_cogroup=args.is_little_cogroup,
-        symprec=args.symprec,
-        degeneracy_tolerance=args.degeneracy_tolerance,
-        log_level=args.log_level,
-        backend=args.backend,
-        both_labels=args.both_labels,
-    )
-    irr.run(kpname=args.kpname)
-
-    # 1) Always show concise summary table (including IR/Raman activity)
-    print(irr.format_summary_table())
-
-    # 2) Optional verbose output
-    if args.show_verbose or args.verbose_file:
-        verbose_text = irr.get_verbose_output()
-
-        if args.verbose_file:
-            with open(args.verbose_file, "w", encoding="utf-8") as fh:
-                fh.write(verbose_text)
-        elif args.show_verbose:
-            print()
-            print("# Verbose irreps output")
-            print(verbose_text, end="")
+        
+        # Optional verbose output
+        if args.show_verbose or args.verbose_file:
+            verbose_text = irr.get_verbose_output()
+            
+            if args.verbose_file:
+                # Append to file for each k-point
+                mode = 'a' if kpname != sorted(high_sym_points.keys())[0] else 'w'
+                with open(args.verbose_file, mode, encoding="utf-8") as fh:
+                    fh.write(f"\n# {kpname} point\n")
+                    fh.write(verbose_text)
+            elif args.show_verbose:
+                print()
+                print(f"# Verbose output for {kpname}")
+                print(verbose_text, end="")
 
 
 if __name__ == "__main__":  # pragma: no cover
