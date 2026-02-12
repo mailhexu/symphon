@@ -4,7 +4,7 @@ Provides a concise irreps summary by default and optional verbose output.
 """
 
 import argparse
-from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy
+from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, print_irreps_phonopy
 
 
 def parse_args() -> argparse.Namespace:

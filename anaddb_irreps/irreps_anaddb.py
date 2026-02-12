@@ -229,12 +229,11 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         both_labels: bool = False,
     ) -> None:
         self._is_little_cogroup = is_little_cogroup
-        self._symprec = symprec
-        self._degeneracy_tolerance = degeneracy_tolerance
         self._log_level = log_level
 
         self._qpoint = np.array(qpoint)
         self._degeneracy_tolerance = degeneracy_tolerance
+        self._symprec = symprec
         self._primitive = primitive_atoms
         self._freqs, self._eig_vecs = freqs, eigvecs
         self._character_table = None
@@ -244,6 +243,206 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         self._both_labels = both_labels
         self._irrep_labels_both = None
         self._irrep_backend_obj = None
+
+    def run(self, kpname=None) -> bool:
+        if self._backend == "irrep":
+            from .irrep_backend import IrRepsIrrep
+            self._backend_obj = IrRepsIrrep(
+                primitive=self._primitive,
+                qpoint=self._qpoint,
+                freqs=self._freqs,
+                eigvecs=self._eig_vecs,
+                symprec=self._symprec,
+                log_level=self._log_level
+            )
+            res = self._backend_obj.run(kpname=kpname)
+            # Sync attributes for ReportingMixin
+            self._irreps = self._backend_obj._irreps
+            self._degenerate_sets = self._backend_obj._degenerate_sets
+            self._pointgroup_symbol = self._backend_obj._pointgroup_symbol
+            self._spacegroup_symbol = self._backend_obj._spacegroup_symbol
+            return res
+
+        # Existing phonopy logic
+        self._symmetry_dataset = Symmetry(self._primitive, symprec=self._symprec).dataset
+        if not is_primitive_cell(self._symmetry_dataset.rotations):
+            raise RuntimeError(
+                "Non-primitve cell is used. Your unit cell may be transformed to "
+                "a primitive cell by PRIMITIVE_AXIS tag."
+            )
+
+        (self._rotations_at_q, self._translations_at_q) = self._get_rotations_at_q()
+
+        self._g = len(self._rotations_at_q)
+
+        import spglib
+        self._pointgroup_symbol, _, _ = spglib.get_pointgroup(self._rotations_at_q)
+        
+        # Get space group symbol from symmetry dataset
+        self._spacegroup_symbol = self._symmetry_dataset.international
+
+        (self._transformation_matrix, self._conventional_rotations,) = self._get_conventional_rotations()
+
+        self._ground_matrices = self._get_ground_matrix()
+        self._degenerate_sets = self._get_degenerate_sets()
+        self._irreps = self._get_irreps()
+        self._characters, self._irrep_dims = self._get_characters()
+
+        self._ir_labels = None
+
+        if (
+            self._pointgroup_symbol in character_table.keys()
+            and character_table[self._pointgroup_symbol] is not None
+        ):
+            self._rotation_symbols, character_table_of_ptg = self._get_rotation_symbols(self._pointgroup_symbol)
+            self._character_table = character_table_of_ptg
+
+            if self._rotation_symbols:
+                self._ir_labels = self._get_irrep_labels(character_table_of_ptg)
+                if (abs(self._qpoint) < self._symprec).all():
+                    self._RamanIR_labels = self._get_infrared_raman()
+                    IR_labels, Ram_labels = self._RamanIR_labels
+                    if self._log_level > 0:
+                        print("IR  labels", IR_labels)
+                        print("Ram labels", Ram_labels)
+
+                    # If both_labels is True, also run irrep backend for BCS notation
+                    if self._both_labels:
+                        from .irrep_backend import IrRepsIrrep
+                        self._irrep_backend_obj = IrRepsIrrep(
+                            primitive=self._primitive,
+                            qpoint=self._qpoint,
+                            freqs=self._freqs,
+                            eigvecs=self._eig_vecs,
+                            symprec=self._symprec,
+                            log_level=self._log_level
+                        )
+                        self._irrep_backend_obj.run(kpname="GM")
+                        # Store the irrep labels separately
+                        self._irrep_labels_both = []
+                        for irrep in self._irrep_backend_obj._irreps:
+                            if isinstance(irrep, dict):
+                                self._irrep_labels_both.append(irrep.get("label"))
+                            else:
+                                self._irrep_labels_both.append(getattr(irrep, "label", None))
+
+            elif (abs(self._qpoint) < self._symprec).all():
+                if self._log_level > 0:
+                    print("Database for this point group is not preprared.")
+            else:
+                if self._log_level > 0:
+                    print(f"Database for point group {self._pointgroup_symbol} at non-Gamma point is not prepared.")
+        else:
+            self._rotation_symbols = None
+            if self._log_level > 0:
+                print(f"Point group {self._pointgroup_symbol} not found in database.")
+
+        return True
+
+    def _get_degenerate_sets(self):
+        deg_sets = get_degenerate_sets(self._freqs, cutoff=self._degeneracy_tolerance)
+        return deg_sets
+
+    def _get_infrared_raman(self):
+        """Compute IR- and Raman-active irreps using symmetry operations.
+
+        Once irreps and characters are available, use them together with
+        symmetry operations to determine which irreps are IR- and
+        Raman-active.
+        """
+        # Multiplicity formula: n_i = 1/g * sum_R chi_i(R)* * chi_reducible(R)
+        # For IR activity, chi_reducible(R) = Tr(R_cart)
+        # For Raman activity, chi_reducible(R) = 1/2 * [Tr(R_cart)^2 + Tr(R_cart^2)]
+        
+        # In any basis (including fractional), the trace is invariant.
+        # So we can use the character table's mapping_table matrices directly.
+        
+        ir_active = set()
+        raman_active = set()
+        
+        if self._pointgroup_symbol not in character_table:
+            return ir_active, raman_active
+            
+        # character_table[symbol] is a list of table variants. 
+        # Usually we just need the first one that matches our rotations.
+        # Phonopy's _get_rotation_symbols already found the correct one and
+        # stored it in self._character_table.
+        
+        if not self._character_table:
+            return ir_active, raman_active
+
+        # 1. Precalculate characters of reducible representations for each class
+        mapping = self._character_table["mapping_table"]
+        g = 0
+        chi_ir_class = []
+        chi_raman_class = []
+        
+        for op_class in mapping:
+            ops = mapping[op_class]
+            g += len(ops)
+            # All ops in a class have same trace
+            R = np.array(ops[0])
+            tr_R = np.trace(R)
+            chi_ir_class.append(tr_R)
+            chi_raman_class.append(0.5 * (tr_R**2 + np.trace(np.dot(R, R))))
+            
+        # 2. Identify active irreps
+        for label, irrep_chars in self._character_table["character_table"].items():
+            n_ir = 0
+            n_ram = 0
+            for iclass, op_class in enumerate(mapping):
+                degen = len(mapping[op_class])
+                n_ir += np.conj(irrep_chars[iclass]) * chi_ir_class[iclass] * degen
+                n_ram += np.conj(irrep_chars[iclass]) * chi_raman_class[iclass] * degen
+            
+            n_ir = np.abs(n_ir) / g
+            n_ram = np.abs(n_ram) / g
+            
+            if n_ir > 0.5:
+                ir_active.add(label)
+            if n_ram > 0.5:
+                raman_active.add(label)
+                
+        return ir_active, raman_active
+
+
+class IrRepsPhonopy(IrRepsEigen):
+    """Irreps helper for direct phonopy calculations."""
+
+    def __init__(
+        self,
+        phonopy_params,
+        qpoint,
+        is_little_cogroup: bool = False,
+        symprec: float | None = None,
+        degeneracy_tolerance: float = 1e-5,
+        log_level: int = 0,
+        backend: str = "phonopy",
+        both_labels: bool = False,
+    ) -> None:
+        phonon = phonopy_load(phonopy_params)
+        q = np.asarray(qpoint, dtype=float)
+        phonon.run_qpoints([q], with_eigenvectors=True)
+        q_dict = phonon.get_qpoints_dict()
+        freqs = np.array(q_dict["frequencies"][0], dtype=float)
+        eigvecs = np.array(q_dict["eigenvectors"][0], dtype=complex)
+        primitive_atoms = phonon.primitive
+
+        if symprec is None:
+            symprec = phonon._symprec
+
+        super().__init__(
+            primitive_atoms,
+            qpoint,
+            freqs,
+            eigvecs,
+            is_little_cogroup=is_little_cogroup,
+            symprec=symprec,
+            degeneracy_tolerance=degeneracy_tolerance,
+            log_level=log_level,
+            backend=backend,
+            both_labels=both_labels,
+        )
 
 
 class IrRepsAnaddb(IrRepsEigen):
