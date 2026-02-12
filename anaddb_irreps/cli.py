@@ -257,7 +257,7 @@ def main_phonopy() -> None:
             if kpname not in high_sym_points:
                 high_sym_points[kpname] = k
     
-    # Print header with space group info
+    # Print header with space group info (once at the top)
     print(f"Space group: {sg.name}")
     print(f"Found {len(high_sym_points)} high-symmetry points:")
     for kpname in sorted(high_sym_points.keys()):
@@ -268,7 +268,7 @@ def main_phonopy() -> None:
     # Analyze each high-symmetry point
     for kpname in sorted(high_sym_points.keys()):
         k = high_sym_points[kpname]
-        print(f"\n# {kpname} point (k={k})")
+        print(f"# {kpname} point")
         print("=" * 60)
         
         # At Gamma, use both labels; otherwise just irrep backend
@@ -285,7 +285,8 @@ def main_phonopy() -> None:
             both_labels=is_gamma,  # Dual labels only at Gamma
         )
         irr.run(kpname=kpname)
-        print(irr.format_summary_table())
+        print(irr.format_summary_table(include_symmetry=False))
+        print()  # Add blank line between k-points
         
         # Optional verbose output
         if args.show_verbose or args.verbose_file:

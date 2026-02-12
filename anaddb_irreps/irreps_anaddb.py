@@ -122,8 +122,13 @@ class ReportingMixin:
 
         return summary
 
-    def format_summary_table(self, include_header: bool = True) -> str:
-        """Format the summary table as a human-readable string."""
+    def format_summary_table(self, include_header: bool = True, include_symmetry: bool = True) -> str:
+        """Format the summary table as a human-readable string.
+        
+        Args:
+            include_header: Whether to include column headers
+            include_symmetry: Whether to include q-point, space group, and point group info
+        """
         summary = self.get_summary_table()
 
         # Only show activity columns if we have activity data (supported by backend)
@@ -134,19 +139,20 @@ class ReportingMixin:
         show_both = getattr(self, "_both_labels", False) and getattr(self, "_irrep_labels_both", None) is not None
 
         lines = []
-        if summary:
-            qx, qy, qz = summary[0]["qpoint"]
-            lines.append(f"q-point: [{qx:.4f}, {qy:.4f}, {qz:.4f}]")
-        
-        space_group = getattr(self, "_spacegroup_symbol", None)
-        point_group = getattr(self, "_pointgroup_symbol", None)
-        
-        if space_group:
-            lines.append(f"Space group: {space_group}")
-        if point_group:
-            lines.append(f"Point group: {point_group}")
-        if lines:
-            lines.append("")
+        if include_symmetry:
+            if summary:
+                qx, qy, qz = summary[0]["qpoint"]
+                lines.append(f"q-point: [{qx:.4f}, {qy:.4f}, {qz:.4f}]")
+            
+            space_group = getattr(self, "_spacegroup_symbol", None)
+            point_group = getattr(self, "_pointgroup_symbol", None)
+            
+            if space_group:
+                lines.append(f"Space group: {space_group}")
+            if point_group:
+                lines.append(f"Point group: {point_group}")
+            if lines:
+                lines.append("")
         if include_header:
             if show_activity and show_both:
                 header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman"
