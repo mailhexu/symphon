@@ -135,6 +135,28 @@ See `examples/MoS2_1T/` for a complete working example with MoS2 1T structure us
 
 See `docs/irreps_guide.md` for BaTiO3 examples demonstrating both Gamma and non-Gamma point analysis.
 
+## Technical Notes
+
+### K-point Coordinate Systems
+
+The `irrep` backend requires careful handling of k-point coordinates:
+
+- **`irreptables` package**: Provides k-points in reference unit cell coordinates
+- **`irrep` package**: Expects k-points in primitive unit cell coordinates
+
+For certain space groups, a coordinate transformation is required. Currently implemented:
+
+- **Pnma (space group 62)**: Cyclic permutation `k_prim = (k_z, k_x, k_y)`
+  - Transformation matrix: `[[0,0,1], [1,0,0], [0,1,0]]`
+  - Verified with TmFeO3 structure (all 8 high-symmetry points work correctly)
+
+### Symmetry Precision
+
+The `symprec` parameter controls tolerance for symmetry detection and atom mapping:
+- Default: `1e-5` (standard phonopy default)
+- Both phonopy and irrep backends now use the same `symprec` value consistently
+- For low-symmetry or distorted structures, increase `symprec` (e.g., `1e-2` or `1e-3`)
+
 ## License
 
 BSD-2-clause
