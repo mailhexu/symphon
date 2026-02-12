@@ -95,6 +95,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="k-point name (e.g. GM, X, M) used by 'irrep' backend",
     )
+    parser.add_argument(
+        "--both-labels",
+        action="store_true",
+        help="For Gamma point: show both phonopy (Mulliken) and irrep (BCS) labels",
+    )
     return parser.parse_args()
 
 
@@ -110,6 +115,7 @@ def main() -> None:
         degeneracy_tolerance=args.degeneracy_tolerance,
         log_level=args.log_level,
         backend=args.backend,
+        both_labels=args.both_labels,
     )
     irr.run(kpname=args.kpname)
 

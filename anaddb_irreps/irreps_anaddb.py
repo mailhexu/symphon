@@ -457,6 +457,7 @@ class IrRepsAnaddb(IrRepsEigen):
         degeneracy_tolerance: float = 1e-5,
         log_level: int = 0,
         backend: str = "phonopy",
+        both_labels: bool = False,
     ) -> None:
         atoms, qpoints, freqs, eig_vecs = read_phbst_freqs_and_eigvecs(phbst_fname)
         primitive_atoms = ase_atoms_to_phonopy_atoms(atoms)
@@ -471,6 +472,7 @@ class IrRepsAnaddb(IrRepsEigen):
             degeneracy_tolerance=degeneracy_tolerance,
             log_level=log_level,
             backend=backend,
+            both_labels=both_labels,
         )
 
 
