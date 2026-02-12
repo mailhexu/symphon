@@ -8,6 +8,8 @@ A simple wrapper of the phonopy irreps module for finding irreducible representa
 - **Dual backend support**:
   - `phonopy` backend: Standard Γ-point analysis with IR/Raman activity identification
   - `irrep` backend: Non-Gamma point analysis using the `irrep` package
+- **Dual-label display**: Show both Mulliken (T1u, Eg, etc.) and BCS (GM4-, GM5+, etc.) notation side-by-side at Gamma point
+- **Automatic high-symmetry analysis**: Analyze all high-symmetry k-points (GM, X, M, R, etc.) in one command
 - **CLI and Python API**: Flexible usage through command-line tools or Python functions
 - **Complete symmetry information**: Reports both space group and point group for the crystal
 - **Spectroscopic activity**: Identifies IR- and Raman-active modes (at Γ point)
@@ -54,6 +56,9 @@ from anaddb_irreps import print_irreps_phonopy
 # Analyze Gamma point
 print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0])
 
+# Show both Mulliken and BCS labels at Gamma
+print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0], both_labels=True)
+
 # Analyze non-Gamma point (requires irrep backend)
 print_irreps_phonopy(
     "phonopy_params.yaml",
@@ -69,11 +74,31 @@ print_irreps_phonopy(
 # Analyze Gamma point
 phonopy-irreps --params phonopy_params.yaml --qpoint 0 0 0
 
-# Analyze non-Gamma point
+# Show both label systems at Gamma
+phonopy-irreps --params phonopy_params.yaml --qpoint 0 0 0 --both-labels
+
+# Analyze all high-symmetry k-points automatically
+phonopy-irreps --params phonopy_params.yaml --qpoint 0 0 0 --all-high-symmetry --backend irrep
+
+# Analyze specific non-Gamma point
 phonopy-irreps --params phonopy_params.yaml --qpoint 0 0.5 0 --backend irrep --kpname X
 ```
 
-## Output
+## Output Examples
+
+### Dual-label display (--both-labels)
+
+```
+q-point: [0.0000, 0.0000, 0.0000]
+Space group: Pm-3m
+Point group: m-3m
+
+# qx      qy      qz      band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman
+ 0.0000  0.0000  0.0000     0     -6.0487      -201.76  T1u         GM4-         Y    .  
+ 0.0000  0.0000  0.0000     9      8.5335       284.65  T2u         GM5-         .    .  
+```
+
+### Standard single-label display
 
 ```
 q-point: [0.0000, 0.5000, 0.0000]
