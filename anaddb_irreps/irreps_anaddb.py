@@ -122,12 +122,13 @@ class ReportingMixin:
 
         return summary
 
-    def format_summary_table(self, include_header: bool = True, include_symmetry: bool = True) -> str:
+    def format_summary_table(self, include_header: bool = True, include_symmetry: bool = True, include_qpoint_cols: bool = True) -> str:
         """Format the summary table as a human-readable string.
         
         Args:
             include_header: Whether to include column headers
             include_symmetry: Whether to include q-point, space group, and point group info
+            include_qpoint_cols: Whether to include qx, qy, qz columns in the table
         """
         summary = self.get_summary_table()
 
@@ -154,12 +155,20 @@ class ReportingMixin:
             if lines:
                 lines.append("")
         if include_header:
-            if show_activity and show_both:
-                header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman"
-            elif show_activity:
-                header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman"
+            if include_qpoint_cols:
+                if show_activity and show_both:
+                    header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman"
+                elif show_activity:
+                    header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman"
+                else:
+                    header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label"
             else:
-                header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label"
+                if show_activity and show_both:
+                    header = "# band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman"
+                elif show_activity:
+                    header = "# band  freq(THz)   freq(cm-1)   label        IR  Raman"
+                else:
+                    header = "# band  freq(THz)   freq(cm-1)   label"
             lines.append(header)
 
         for i, row in enumerate(summary):
@@ -178,27 +187,47 @@ class ReportingMixin:
                 if show_activity:
                     ir_flag = "Y" if row["is_ir_active"] else "."
                     raman_flag = "Y" if row["is_raman_active"] else "."
-                    line = (
-                        f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}  {ir_flag:^3s} {raman_flag:^5s}"
-                    )
+                    if include_qpoint_cols:
+                        line = (
+                            f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
+                            f"{f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                        )
+                    else:
+                        line = (
+                            f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                        )
                 else:
-                    line = (
-                        f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}"
-                    )
+                    if include_qpoint_cols:
+                        line = (
+                            f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
+                            f"{f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}"
+                        )
+                    else:
+                        line = (
+                            f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}"
+                        )
             elif show_activity:
                 ir_flag = "Y" if row["is_ir_active"] else "."
                 raman_flag = "Y" if row["is_raman_active"] else "."
-                line = (
-                    f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                    f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
-                )
+                if include_qpoint_cols:
+                    line = (
+                        f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
+                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                    )
+                else:
+                    line = (
+                        f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                    )
             else:
-                line = (
-                    f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                    f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}"
-                )
+                if include_qpoint_cols:
+                    line = (
+                        f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
+                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}"
+                    )
+                else:
+                    line = (
+                        f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}"
+                    )
             lines.append(line)
 
         return "\n".join(lines)

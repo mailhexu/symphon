@@ -268,7 +268,7 @@ def main_phonopy() -> None:
     # Analyze each high-symmetry point
     for kpname in sorted(high_sym_points.keys()):
         k = high_sym_points[kpname]
-        print(f"# {kpname} point")
+        print(f"# {kpname} point: k = [{k[0]:.4f}, {k[1]:.4f}, {k[2]:.4f}]")
         print("=" * 60)
         
         # At Gamma, use both labels; otherwise just irrep backend
@@ -285,7 +285,7 @@ def main_phonopy() -> None:
             both_labels=is_gamma,  # Dual labels only at Gamma
         )
         irr.run(kpname=kpname)
-        print(irr.format_summary_table(include_symmetry=False))
+        print(irr.format_summary_table(include_symmetry=False, include_qpoint_cols=False))
         print()  # Add blank line between k-points
         
         # Optional verbose output
