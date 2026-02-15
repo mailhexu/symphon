@@ -232,8 +232,19 @@ def main_phonopy() -> None:
     positions = phonon.primitive.scaled_positions
     numbers = phonon.primitive.numbers
     
-    # Determine symmetry precision
-    symprec = args.symprec if args.symprec is not None else 1e-5
+    # Determine symmetry precision: user input > yaml file > default
+    if args.symprec is not None:
+        symprec = args.symprec
+    else:
+        import yaml
+        symprec = 1e-5  # default
+        try:
+            with open(args.phonopy_params, 'r') as f:
+                yaml_data = yaml.safe_load(f)
+            if yaml_data and 'phonopy' in yaml_data and 'symmetry_tolerance' in yaml_data['phonopy']:
+                symprec = float(yaml_data['phonopy']['symmetry_tolerance'])
+        except (IOError, KeyError, TypeError, ValueError):
+            pass
     
     # Create SpaceGroupIrreps to get space group info
     sg = SpaceGroupIrreps.from_cell(
