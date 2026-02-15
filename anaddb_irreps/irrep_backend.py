@@ -105,10 +105,52 @@ class IrRepsIrrep:
                 print(f"Error fetching BCS table for {kpname} at {self._qpoint}: {e}")
             raise e
 
-        # 3. Calculate phonon traces
+        # 3. Detect if BCS table has only multi-dimensional irreps
+        # Check dimension of each irrep (identity character = dimension)
+        min_irrep_dim = float('inf')
+        for label, table_chars in bcs_table.items():
+            if 1 in table_chars:
+                identity_char = table_chars[1]
+            else:
+                identity_char = list(table_chars.values())[0]
+            dim = int(round(abs(identity_char)))
+            min_irrep_dim = min(min_irrep_dim, dim)
+        
+        only_multidim = (min_irrep_dim > 1)
+        
+        if only_multidim and self._log_level > 0:
+            print(f"\nDetected k-point with ONLY {min_irrep_dim}D irreps (no 1D irreps)")
+            print(f"Force-pairing consecutive modes into {min_irrep_dim}D blocks...")
+        
+        # 4. Apply force-pairing if needed
+        if only_multidim and min_irrep_dim == 2:
+            # Force pair consecutive modes for 2D irreps
+            original_deg_sets = self._degenerate_sets
+            forced_pairs = []
+            i = 0
+            while i < len(self._freqs):
+                if i + 1 < len(self._freqs):
+                    # Pair consecutive modes
+                    forced_pairs.append(tuple([i, i+1]))
+                    i += 2
+                else:
+                    # Odd number of modes - leave last one as single
+                    forced_pairs.append(tuple([i]))
+                    i += 1
+            
+            self._degenerate_sets = forced_pairs
+            
+            if self._log_level > 0:
+                print(f"  Original degeneracy: {len(original_deg_sets)} blocks")
+                print(f"  Forced pairing: {len(forced_pairs)} blocks")
+                singles = sum(1 for b in forced_pairs if len(b) == 1)
+                pairs = sum(1 for b in forced_pairs if len(b) == 2)
+                print(f"    Singles: {singles}, Pairs: {pairs}")
+        
+        # 5. Calculate phonon traces
         all_traces, little_group_indices = self._calculate_phonon_traces(sg)
         
-        # 4. Match traces with BCS labels
+        # 6. Match traces with BCS labels
         # Note: BCS table keys are 1-indexed positions in sg.symmetries (full list)
         # We stored indices in little_group_indices, add 1 for 1-based indexing
         #
