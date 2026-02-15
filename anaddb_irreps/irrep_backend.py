@@ -139,7 +139,11 @@ class IrRepsIrrep:
                     best_match = label
             
             # Debug output for unidentified modes
-            if self._log_level > 2 and max_overlap < 0.8:
+            # Use adaptive threshold based on k-point
+            is_gamma = (np.abs(self._qpoint) < self._symprec).all()
+            threshold = 0.8 if is_gamma else 0.5
+            
+            if self._log_level > 2 and max_overlap < threshold:
                 freq = self._freqs[block[0]]
                 print(f"  Block (modes {list(block)}, freq={freq:.4f}): best={best_match} overlap={max_overlap:.4f}")
                 sorted_overlaps = sorted(all_overlaps.items(), key=lambda x: -x[1])[:3]
@@ -149,11 +153,12 @@ class IrRepsIrrep:
             # Store result for each mode in the block
             for _ in block:
                 # Threshold considerations:
-                # - Gamma point: overlap ~1.0 for correct identification
-                # - Non-Gamma points: overlap can be 0.5-0.8 due to eigenvector gauge mismatch
-                # - Using 0.5 threshold provides identification for most modes
-                # - Users should verify assignments for non-Gamma points
-                if max_overlap > 0.8:
+                # - Gamma point: overlap ~1.0 for correct identification, use threshold 0.8
+                # - Non-Gamma points: overlap typically 0.5-0.7 due to eigenvector gauge mismatch, use threshold 0.5
+                # - Eigenvector phases from phonopy may not match BCS convention at non-Gamma k-points
+                # - Lower threshold at non-Gamma enables identification but increases false positives
+                # - Users should verify non-Gamma assignments, especially those with overlap < 0.6
+                if max_overlap > threshold:
                     self._irreps.append({"label": best_match})
                 else:
                     self._irreps.append({"label": None})
