@@ -279,8 +279,6 @@ def main_phonopy() -> None:
     # Analyze each high-symmetry point
     for kpname in sorted(high_sym_points.keys()):
         k = high_sym_points[kpname]
-        print(f"# {kpname} point: k = [{k[0]:.4f}, {k[1]:.4f}, {k[2]:.4f}]")
-        print("=" * 60)
         
         # At Gamma, use both labels; otherwise just irrep backend
         is_gamma = all(abs(x) < 1e-6 for x in k)
@@ -296,6 +294,19 @@ def main_phonopy() -> None:
             both_labels=is_gamma,  # Dual labels only at Gamma
         )
         irr.run(kpname=kpname)
+        
+        # Print k-point header with coordinate mapping
+        print(f"# {kpname} point (Primitive coordinates)")
+        print(f"# k_prim = [{k[0]:.4f}, {k[1]:.4f}, {k[2]:.4f}]")
+        
+        # Get BCS coordinates and label if available
+        backend_obj = getattr(irr, '_backend_obj', None)
+        if backend_obj and hasattr(backend_obj, '_qpoint_bcs') and hasattr(backend_obj, '_bcs_kpname'):
+            q_bcs = backend_obj._qpoint_bcs
+            bcs_label = backend_obj._bcs_kpname
+            print(f"# k_BCS  = [{q_bcs[0]:.4f}, {q_bcs[1]:.4f}, {q_bcs[2]:.4f}]  (BCS label: {bcs_label})")
+        
+        print("=" * 60)
         print(irr.format_summary_table(include_symmetry=False, include_qpoint_cols=False))
         print()  # Add blank line between k-points
         

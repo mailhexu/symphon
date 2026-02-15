@@ -30,6 +30,8 @@ class IrRepsIrrep:
         self._pointgroup_symbol = None
         self._spacegroup_symbol = None
         self._RamanIR_labels = None # Not implemented for non-gamma in this backend yet
+        self._bcs_kpname = None  # Store BCS k-point label
+        self._qpoint_bcs = None  # Store k-point in BCS coordinates
         
     def run(self, kpname=None):
         # 1. Setup SpaceGroupIrreps from irrep package
@@ -61,6 +63,10 @@ class IrRepsIrrep:
         refUC = sg.refUC
         refUCTinv = np.linalg.inv(refUC.T)
         
+        # Transform q-point to BCS coordinates
+        q_bcs = refUC.T @ self._qpoint
+        self._qpoint_bcs = q_bcs
+        
         found_kpname = None
         for irr in table.irreps:
             k_prim_table = (refUCTinv @ irr.k)
@@ -69,12 +75,21 @@ class IrRepsIrrep:
                 found_kpname = irr.kpname
                 break
         
+        # Print coordinate mapping information
+        if self._log_level > 0:
+            print(f"\nK-point Coordinate Mapping:")
+            print(f"  Primitive: [{self._qpoint[0]:.4f}, {self._qpoint[1]:.4f}, {self._qpoint[2]:.4f}]")
+            print(f"  BCS:       [{q_bcs[0]:.4f}, {q_bcs[1]:.4f}, {q_bcs[2]:.4f}]")
+            if found_kpname:
+                print(f"  BCS Label: {found_kpname}")
+        
         if kpname is not None and found_kpname is not None and kpname != found_kpname:
             if self._log_level > 0:
                 print(f"Warning: Provided kpname '{kpname}' differs from detected BCS label '{found_kpname}'. Using '{found_kpname}'.")
         
         if found_kpname:
             kpname = found_kpname
+            self._bcs_kpname = found_kpname
         elif kpname is None:
             # Fallback to Gamma if close to zero
             if (np.abs(self._qpoint) < self._symprec).all():
