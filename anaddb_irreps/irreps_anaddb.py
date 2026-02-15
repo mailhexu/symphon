@@ -181,8 +181,10 @@ class ReportingMixin:
             if show_both:
                 # Get both labels: phonopy (Mulliken) and irrep (BCS)
                 irrep_labels_both = getattr(self, "_irrep_labels_both", None)
-                label_mulliken = label if label != "-" else ""
-                label_bcs = irrep_labels_both[i] if i < len(irrep_labels_both) else ""
+                label_mulliken = label if label else "-"
+                label_bcs = "-"
+                if irrep_labels_both and i < len(irrep_labels_both):
+                    label_bcs = irrep_labels_both[i] or "-"
                 
                 if show_activity:
                     ir_flag = "Y" if row["is_ir_active"] else "."
@@ -190,21 +192,21 @@ class ReportingMixin:
                     if include_qpoint_cols:
                         line = (
                             f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                            f"{f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                            f"{f_thz:10.4f}  {f_cm1:11.2f}  {str(label_mulliken):10s}  {str(label_bcs):10s}  {ir_flag:^3s} {raman_flag:^5s}"
                         )
                     else:
                         line = (
-                            f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                            f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label_mulliken):10s}  {str(label_bcs):10s}  {ir_flag:^3s} {raman_flag:^5s}"
                         )
                 else:
                     if include_qpoint_cols:
                         line = (
                             f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                            f"{f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}"
+                            f"{f_thz:10.4f}  {f_cm1:11.2f}  {str(label_mulliken):10s}  {str(label_bcs):10s}"
                         )
                     else:
                         line = (
-                            f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {label_mulliken:10s}  {label_bcs:10s}"
+                            f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label_mulliken):10s}  {str(label_bcs):10s}"
                         )
             elif show_activity:
                 ir_flag = "Y" if row["is_ir_active"] else "."
@@ -212,21 +214,21 @@ class ReportingMixin:
                 if include_qpoint_cols:
                     line = (
                         f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}  {ir_flag:^3s} {raman_flag:^5s}"
                     )
                 else:
                     line = (
-                        f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}  {ir_flag:^3s} {raman_flag:^5s}"
+                        f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}  {ir_flag:^3s} {raman_flag:^5s}"
                     )
             else:
                 if include_qpoint_cols:
                     line = (
                         f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}"
+                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}"
                     )
                 else:
                     line = (
-                        f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {label:10s}"
+                        f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}"
                     )
             lines.append(line)
 
@@ -234,6 +236,10 @@ class ReportingMixin:
 
     def get_verbose_output(self) -> str:
         """Get verbose phonopy-style output (only for phonopy backend)."""
+        backend = getattr(self, "_backend", "phonopy")
+        if backend != "phonopy":
+            return f"# Verbose output not supported for '{backend}' backend.\n"
+
         from io import StringIO
         import contextlib
         buf = StringIO()
