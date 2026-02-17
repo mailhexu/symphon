@@ -32,6 +32,7 @@ classifiers = [
 [project.optional-dependencies]
 abipy = ["abipy>=0.9.8"]
 irrep = ["irrep"]
+dev = ["pytest>=7.0", "pytest-cov"]
 
 [tool.setuptools]
 packages = ["anaddb_irreps"]
@@ -39,3 +40,9 @@ packages = ["anaddb_irreps"]
 [project.scripts]
 anaddb-irreps = "anaddb_irreps.cli:main"
 phonopy-irreps = "anaddb_irreps.cli:main_phonopy"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v"

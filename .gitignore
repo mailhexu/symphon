@@ -1,5 +1,6 @@
 doc/refs/*.pdf
 Refs
+agent_files
 
 uv.lock
 
@@ -129,3 +130,7 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# Test results
+test_results/
+.pytest_cache/

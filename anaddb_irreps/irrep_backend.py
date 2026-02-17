@@ -14,7 +14,7 @@ class IrRepsIrrep:
     """
     Backend driver using the 'irrep' package for irrep identification.
     """
-    def __init__(self, primitive, qpoint, freqs, eigvecs, symprec=1e-5, log_level=0):
+    def __init__(self, primitive, qpoint, freqs, eigvecs, symprec=1e-5, log_level=0, phase_convention='r'):
         if not HAS_IRREP:
             raise ImportError("The 'irrep' package is required for this backend. Install it with 'pip install irrep'.")
         
@@ -24,6 +24,7 @@ class IrRepsIrrep:
         self._eigvecs = eigvecs # (3N, 3N)
         self._symprec = symprec
         self._log_level = log_level
+        self._phase_convention = phase_convention  # 'r' (default) or 'R'
         
         self._irreps = None
         self._degenerate_sets = None
@@ -121,6 +122,9 @@ class IrRepsIrrep:
         if only_multidim and self._log_level > 0:
             print(f"\nDetected k-point with ONLY {min_irrep_dim}D irreps (no 1D irreps)")
             print(f"Force-pairing consecutive modes into {min_irrep_dim}D blocks...")
+        
+        if self._log_level > 0:
+            print(f"Using phase convention: '{self._phase_convention}'-gauge")
         
         # 4. Apply force-pairing if needed
         if only_multidim and min_irrep_dim == 2:
@@ -302,9 +306,17 @@ class IrRepsIrrep:
                     diff_round = np.round(diff)
                     if np.allclose(diff - diff_round, 0, atol=self._symprec):
                         perm.append(j)
-                        # r-gauge phase factor
-                        L_vec = rot_work @ positions_work_unmodded[k] + trans_work - positions_work_unmodded[k]
-                        phase = np.exp(2j * np.pi * np.dot(q_work, L_vec))
+                        
+                        # Phase convention selection
+                        if self._phase_convention == 'R':
+                            # R-gauge: NO phase factor - use raw phonopy eigenvectors
+                            phase = 1.0
+                        else:
+                            # r-gauge (default): phase = exp(i*q·(R*r + t - r))
+                            # Full symmetry operation including translation
+                            L_vec = rot_work @ positions_work_unmodded[k] + trans_work - positions_work_unmodded[k]
+                            phase = np.exp(2j * np.pi * np.dot(q_work, L_vec))
+                        
                         phases.append(phase)
                         found = True
                         break
