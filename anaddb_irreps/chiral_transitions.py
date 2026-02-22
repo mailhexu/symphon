@@ -2185,6 +2185,9 @@ class ChiralTransitionFinder:
                             v1 = t.opd.numerical.flatten()
                             v2 = transition.opd.numerical.flatten()
                             
+                            if v1.shape != v2.shape:
+                                continue
+                                
                             norm1 = np.linalg.norm(v1)
                             norm2 = np.linalg.norm(v2)
                             
