@@ -48,6 +48,13 @@ def normalize_output(output: str) -> str:
         # Skip empty lines at start
         if not lines and not line.strip():
             continue
+        # Skip numpy warnings
+        if "RuntimeWarning" in line or "DeprecationWarning" in line or "UserWarning" in line:
+            continue
+        if "r = _umath_linalg.det" in line:
+            continue
+        if "spglib" in line and "spg.py" in line:
+            continue
         lines.append(line)
     return "\n".join(lines).strip()
 

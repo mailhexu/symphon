@@ -59,7 +59,10 @@ class IrRepsIrrep:
         
         # 2. Get BCS character table for the q-point
         # Use refUC to find the matching label in the BCS table
-        from irreptables import IrrepTable
+        try:
+            from irreptables.irreps import IrrepTable
+        except ImportError:
+            from irreptables import IrrepTable
         table = IrrepTable(sg.number_str, sg.spinor)
         refUC = sg.refUC
         refUCTinv = np.linalg.inv(refUC.T)

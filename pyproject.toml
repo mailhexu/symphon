@@ -11,7 +11,7 @@ authors = [
   { name = "Xu He", email = "mailhexu@gmail.com" },
 ]
 license = { text = "BSD-2-clause" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
   "numpy>1.16.5",
   "ase>=3.19",
@@ -31,7 +31,8 @@ classifiers = [
 
 [project.optional-dependencies]
 abipy = ["abipy>=0.9.8"]
-irrep = ["irrep"]
+irrep = ["irrep", "irreptables"]
+chiral = ["spgrep>=0.3.0", "spgrep-modulation>=0.3.0", "irrep>=2.0.0", "irreptables"]
 dev = ["pytest>=7.0", "pytest-cov"]
 
 [tool.setuptools]
@@ -40,6 +41,7 @@ packages = ["anaddb_irreps"]
 [project.scripts]
 anaddb-irreps = "anaddb_irreps.cli:main"
 phonopy-irreps = "anaddb_irreps.cli:main_phonopy"
+anaddb-chiral = "anaddb_irreps.cli_chiral:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

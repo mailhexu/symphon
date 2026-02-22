@@ -221,7 +221,10 @@ def main_phonopy() -> None:
     irrep backend. At Gamma point, shows both Mulliken and BCS labels.
     """
     from irrep.spacegroup_irreps import SpaceGroupIrreps
-    from irreptables import IrrepTable
+    try:
+        from irreptables.irreps import IrrepTable
+    except ImportError:
+        from irreptables import IrrepTable
     from phonopy import load as phonopy_load
     
     args = parse_args_phonopy()
