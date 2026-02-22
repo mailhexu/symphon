@@ -2174,11 +2174,34 @@ class ChiralTransitionFinder:
                     )
                     
                     # Deduplicate
-                    if not any(t.daughter_spg_number == transition.daughter_spg_number and 
-                               t.irrep_label == transition.irrep_label and
-                               t.opd.symbolic == transition.opd.symbolic and
-                               np.allclose(t.qpoint, transition.qpoint)
-                               for t in transitions):
+                    is_duplicate = False
+                    for t in transitions:
+                        if (t.daughter_spg_number == transition.daughter_spg_number and 
+                            t.irrep_label == transition.irrep_label and
+                            np.allclose(t.qpoint, transition.qpoint)):
+                            
+                            # Check if the opd is collinear or identical
+                            # Both numerical vectors should be aligned
+                            v1 = t.opd.numerical.flatten()
+                            v2 = transition.opd.numerical.flatten()
+                            
+                            norm1 = np.linalg.norm(v1)
+                            norm2 = np.linalg.norm(v2)
+                            
+                            if norm1 > 1e-5 and norm2 > 1e-5:
+                                v1_norm = v1 / norm1
+                                v2_norm = v2 / norm2
+                                dot_product = np.abs(np.dot(v1_norm, v2_norm))
+                                
+                                # If vectors are collinear, or it's simply a duplicate by symbolic string
+                                if np.isclose(dot_product, 1.0, atol=1e-5) or t.opd.symbolic == transition.opd.symbolic:
+                                    is_duplicate = True
+                                    break
+                            elif t.opd.symbolic == transition.opd.symbolic:
+                                is_duplicate = True
+                                break
+                    
+                    if not is_duplicate:
                         transitions.append(transition)
 
         return transitions
