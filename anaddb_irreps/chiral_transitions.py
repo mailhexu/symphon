@@ -1128,11 +1128,16 @@ class ChiralTransitionFinder:
                 possible_MTs = [P_inv]
 
         # Origin shifts in target basis
-
+        # Include fractions needed for all crystal systems:
+        # - Orthorhombic, tetragonal, cubic: 0, 1/4, 1/2, 3/4
+        # - Hexagonal, trigonal: 1/3, 2/3, 1/6
+        # - Monoclinic, triclinic: finer sampling (1/8)
+        shift_fractions = [0, 1/8, 1/6, 1/4, 1/3, 3/8, 1/2, 5/8, 2/3, 3/4, 5/6, 7/8]
+        
         shifts = []
-        for i in [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875]:
-            for j in [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875]:
-                for k in [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875]:
+        for i in shift_fractions:
+            for j in shift_fractions:
+                for k in shift_fractions:
                     shifts.append(np.array([i, j, k]))
         
         for MT in possible_MTs:
@@ -1740,6 +1745,16 @@ class ChiralTransitionFinder:
         
         S_conv = np.diag(denoms)
         S_conv_inv = np.linalg.inv(S_conv)
+        
+        # Commensurability check: prevent explosion for nearly-incommensurate q-points
+        # If denoms is too large, the supercell becomes intractable
+        max_denom = max(denoms)
+        if max_denom > 12:
+            raise ValueError(
+                f"q-point appears incommensurate with lattice (denominators={denoms}). "
+                f"Maximum allowed denominator is 12 to prevent supercell explosion."
+            )
+        
         lattice = np.dot(S_conv, conv_lattice)
         
         sc_rots = []
@@ -1938,16 +1953,25 @@ class ChiralTransitionFinder:
         self,
         lost_ops: list[LostOperation]
     ) -> int:
-        """Count enantiomeric domain pairs from lost improper operations."""
-        count = 0
+        """Count enantiomeric domain pairs from lost improper operations.
+        
+        When an achiral parent transitions to a chiral daughter, spontaneous
+        symmetry breaking creates TWO enantiomeric domains (left-handed and
+        right-handed). The number of enantiomeric domains is therefore:
+        - 0 if no improper operations were lost (parent was already chiral)
+        - 2 if any improper operations were lost (achiral → chiral transition)
+        
+        Returns:
+            0 or 2 (never 1, since enantiomeric pairs always come in twos)
+        """
         for op in lost_ops:
             if op.operation_type in (
                 ImproperOperationType.INVERSION,
                 ImproperOperationType.MIRROR,
                 ImproperOperationType.GLIDE
             ):
-                count += 1
-        return min(count, 1)
+                return 2  # Enantiomeric pair created by symmetry breaking
+        return 0
 
     def find_chiral_transitions(
         self,
