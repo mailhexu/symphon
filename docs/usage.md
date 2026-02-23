@@ -14,6 +14,13 @@ This guide provides detailed usage instructions for `anaddb_irreps` including bo
   - [CLI Options](#cli-options)
 - [Output Format](#output-format)
   - [Example Output](#example-output)
+- [Chiral Phase Transitions](#chiral-phase-transitions)
+  - [Additional Columns](#additional-columns)
+  - [Example: BaTiO₃ at Gamma](#example-batio₃-at-gamma)
+  - [Example: TmFeO₃ at Gamma](#example-tmfeo₃-at-gamma)
+  - [Example: Class II Enantiomorphous Pairs](#example-class-ii-enantiomorphous-pairs)
+  - [When Chiral Transitions Appear](#when-chiral-transitions-appear)
+  - [Interpreting OPD Notation](#interpreting-opd-notation)
 
 ---
 
@@ -262,3 +269,82 @@ Point group: m-3m
 ```
 
 Note the absence of IR/Raman columns in the non-Gamma output.
+
+---
+
+## Chiral Phase Transitions
+
+The `phonopy-irreps` CLI automatically identifies phonon modes that can induce **chiral phase transitions**—transitions from a non-chiral parent space group to a chiral Sohncke space group. This is particularly useful for studying:
+
+- **Multiferroic materials** where chirality couples to magnetic or electric order
+- **Enantiomeric phase separation** in chiral crystals
+- **Symmetry breaking pathways** to chiral ground states
+
+### Additional Columns
+
+When chiral transitions are possible for a given mode, two additional columns appear:
+
+| Column | Description |
+|--------|-------------|
+| **OPD** | Order Parameter Direction in irrep space. Symbolic notation like `(a)`, `(a,0)`, `(a,a,...)` indicates the direction of the order parameter that breaks symmetry. |
+| **Daughter SG** | Target chiral Sohncke space group(s) accessible via this transition, shown as `Symbol(#Number)`. Enantiomorphous pairs (Class II) are of particular interest. |
+
+### Example: BaTiO₃ at Gamma
+
+For cubic BaTiO₃ (Pm-3m, SG 221), the `T2u` mode can induce a transition to chiral R32:
+
+```
+# band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman   OPD          Daughter SG
+    9      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    R32(#155)
+   10      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    R32(#155)
+   11      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    R32(#155)
+```
+
+The `OPD: (a,a,...)` indicates the order parameter lies along the diagonal direction in the 3D irrep space, leading to the chiral subgroup R32.
+
+### Example: TmFeO₃ at Gamma
+
+For orthorhombic TmFeO₃ (Pnma, SG 62), multiple `Au` modes can induce transitions to the chiral group P2₁2₁2₁:
+
+```
+# band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman   OPD          Daughter SG
+    3      2.1839        72.85  Au          GM1-         .    .      (a)          P2_12_12_1(#19)
+   12      4.8692       162.42  Au          GM1-         .    .      (a)          P2_12_12_1(#19)
+   17      6.1103       203.82  Au          GM1-         .    .      (a)          P2_12_12_1(#19)
+```
+
+P2₁2₁2₁ (#19) is a **Class III Sohncke group**—a chiral space group that does not have a distinct enantiomorphous partner.
+
+### Example: Class II Enantiomorphous Pairs
+
+For space groups with transitions to **Class II** Sohncke groups, different OPDs lead to enantiomorphous partners. For example, from tetragonal P4₂/nmc (SG 131):
+
+```
+--- Class II (Enantiomorphous pairs) ---
+  #   q-pt    Irrep    OPD      Daughter
+  1    Z      Z4       (a,0)    P4_322(#95)
+  2    Z      Z4       (0,a)    P4_122(#91)
+```
+
+Here, `(a,0)` leads to P4₃22 (#95) while `(0,a)` leads to its enantiomorph P4₁22 (#91). These two daughter phases are mirror images of each other—condensation of the same phonon with opposite OPD signs produces opposite handedness.
+
+### When Chiral Transitions Appear
+
+- **Columns hidden**: Parent space group is already chiral (Sohncke group), or no transitions found
+- **Columns shown**: At least one mode can induce a transition to a chiral Sohncke group
+
+### Interpreting OPD Notation
+
+| OPD | Meaning |
+|-----|---------|
+| `(a)` | 1D irrep, single free parameter |
+| `(a,0)` | 2D irrep, order parameter along first component |
+| `(0,a)` | 2D irrep, order parameter along second component |
+| `(a,a)` | 2D irrep, diagonal direction |
+| `(a,a,...)` | Multi-D irrep, diagonal (isotropic) direction |
+
+Different OPDs for the same irrep may lead to different daughter space groups.
+
+### Further Reading
+
+For the theoretical background on chiral transitions and Sohncke space groups, see `docs/chiral_transitions_theory.md`.

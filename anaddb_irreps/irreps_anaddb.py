@@ -7,6 +7,7 @@ from anaddb_irreps.abipy_io import read_phbst_freqs_and_eigvecs, ase_atoms_to_ph
 from phonopy.phonon.degeneracy import degenerate_sets as get_degenerate_sets
 from phonopy.structure.cells import is_primitive_cell
 from phonopy import load as phonopy_load
+from .chiral_transitions import ChiralTransitionFinder, is_sohncke
 
 
 class ReportingMixin:
@@ -54,6 +55,9 @@ class ReportingMixin:
         raw_labels = [None] * n_modes
         ir_labels_seq = getattr(self, "_ir_labels", None)
         deg_sets = getattr(self, "_degenerate_sets", None)
+        
+        # New: Chiral transitions mapping
+        chiral_map = getattr(self, "_chiral_transitions_map", {})
 
         # Build a mapping from mode index to degenerate set index
         mode_to_degset = {}
@@ -108,6 +112,39 @@ class ReportingMixin:
             is_ir_active = bool(label and ir_active_map.get(label, False))
             is_raman_active = bool(label and raman_active_map.get(label, False))
 
+            # Lookup chiral transitions
+            opd_str = "-"
+            daughter_str = "-"
+            
+            # Check both primary label and BCS label (if available in both_labels mode)
+            labels_to_check = []
+            if label:
+                labels_to_check.append(label)
+            
+            irrep_labels_both = getattr(self, "_irrep_labels_both", None)
+            if irrep_labels_both and band_index < len(irrep_labels_both):
+                label_bcs = irrep_labels_both[band_index]
+                if label_bcs and label_bcs not in labels_to_check:
+                    labels_to_check.append(label_bcs)
+
+            for lbl in labels_to_check:
+                # Try exact match first
+                trans_list = chiral_map.get(lbl)
+                if not trans_list:
+                    # Try match without branch index (e.g. Z3:1 -> Z3)
+                    base_label = lbl.split(":")[0]
+                    trans_list = chiral_map.get(base_label)
+                
+                if trans_list:
+                    if not isinstance(trans_list, list):
+                        trans_list = [trans_list]
+                    
+                    opds = sorted(list(set(t.opd.symbolic for t in trans_list)))
+                    daughters = sorted(list(set(f"{t.daughter_spg_symbol}(#{t.daughter_spg_number})" for t in trans_list)))
+                    opd_str = ", ".join(opds)
+                    daughter_str = ", ".join(daughters)
+                    break # Found a match
+
             summary.append(
                 {
                     "qpoint": q,
@@ -117,10 +154,46 @@ class ReportingMixin:
                     "label": label,
                     "is_ir_active": is_ir_active,
                     "is_raman_active": is_raman_active,
+                    "opd": opd_str,
+                    "daughter_sg": daughter_str,
                 }
             )
 
         return summary
+
+    def _compute_chiral_transitions(self):
+        """Compute possible chiral transitions for current space group and q-point."""
+        spg_number = getattr(self, "_spacegroup_number", None)
+        if spg_number is None or is_sohncke(spg_number):
+            # Parent is already chiral or unknown
+            self._chiral_transitions_map = {}
+            return
+
+        # Use find_chiral_transitions_simple which is faster and doesn't require spgrep-modulation
+        try:
+            finder = ChiralTransitionFinder(spg_number, symprec=self._symprec)
+            
+            # We need to provide the q-point coordinates
+            q = self._qpoint
+            
+            # We don't have a reliable BCS label here, so we let it search or use "current"
+            # If kpname was provided during run(), we might have it stored.
+            kpname = getattr(self, "_bcs_kpname", None)
+            transitions = finder.find_chiral_transitions_simple(qpoint=q, qpoint_label=kpname)
+            
+            # Group transitions by irrep label
+            mapping = {}
+            for t in transitions:
+                lbl = t.irrep_label
+                if lbl not in mapping:
+                    mapping[lbl] = []
+                mapping[lbl].append(t)
+            
+            self._chiral_transitions_map = mapping
+        except Exception as e:
+            if getattr(self, "_log_level", 0) > 0:
+                print(f"Warning: Failed to compute chiral transitions: {e}")
+            self._chiral_transitions_map = {}
 
     def format_summary_table(self, include_header: bool = True, include_symmetry: bool = True, include_qpoint_cols: bool = True) -> str:
         """Format the summary table as a human-readable string.
@@ -131,6 +204,7 @@ class ReportingMixin:
             include_qpoint_cols: Whether to include qx, qy, qz columns in the table
         """
         summary = self.get_summary_table()
+        show_chiral = any(row.get("opd") != "-" or row.get("daughter_sg") != "-" for row in summary)
 
         # Only show activity columns if we have activity data (supported by backend)
         backend = getattr(self, "_backend", "phonopy")
@@ -169,6 +243,9 @@ class ReportingMixin:
                     header = "# band  freq(THz)   freq(cm-1)   label        IR  Raman"
                 else:
                     header = "# band  freq(THz)   freq(cm-1)   label"
+            
+            if show_chiral:
+                header += "   OPD          Daughter SG"
             lines.append(header)
 
         for i, row in enumerate(summary):
@@ -230,6 +307,12 @@ class ReportingMixin:
                     line = (
                         f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}"
                     )
+            
+            if show_chiral:
+                opd_str = row.get("opd", "-")
+                daughter_str = row.get("daughter_sg", "-")
+                # Add enough padding so it aligns with the header
+                line = f"{line:90s}  {opd_str:12s}  {daughter_str}"
             lines.append(line)
 
         return "\n".join(lines)
@@ -284,6 +367,8 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         self._both_labels = both_labels
         self._irrep_labels_both = None
         self._irrep_backend_obj = None
+        self._chiral_transitions_map = {}
+        self._spacegroup_number = None
 
     def run(self, kpname=None) -> bool:
         if self._backend == "irrep":
@@ -311,6 +396,9 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             self._degenerate_sets = self._backend_obj._degenerate_sets
             self._pointgroup_symbol = self._backend_obj._pointgroup_symbol
             self._spacegroup_symbol = self._backend_obj._spacegroup_symbol
+            self._spacegroup_number = getattr(self._backend_obj, "_spacegroup_number", None)
+            
+            self._compute_chiral_transitions()
             return res
 
         # Existing phonopy logic
@@ -330,6 +418,7 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         
         # Get space group symbol from symmetry dataset
         self._spacegroup_symbol = self._symmetry_dataset.international
+        self._spacegroup_number = self._symmetry_dataset.number
 
         (self._transformation_matrix, self._conventional_rotations,) = self._get_conventional_rotations()
 
@@ -387,6 +476,7 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             if self._log_level > 0:
                 print(f"Point group {self._pointgroup_symbol} not found in database.")
 
+        self._compute_chiral_transitions()
         return True
 
     def _get_degenerate_sets(self):

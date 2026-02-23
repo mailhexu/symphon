@@ -1367,7 +1367,7 @@ class ChiralTransitionFinder:
                     except Exception:
                         continue
 
-                    if daughter_num == 0 or not is_sohncke(daughter_num):
+                    if daughter_num == 0:
                         continue
 
                     found_at_q = True
@@ -1704,39 +1704,23 @@ class ChiralTransitionFinder:
         full_reps: Optional[list[np.ndarray]] = None,
         star: Optional[list[np.ndarray]] = None
     ) -> tuple[int, str, float]:
-        """
-        Identify the space group of an isotropy subgroup and the primitive volume ratio.
-
-        Args:
-            subgroup_indices: Indices of operations in the subgroup (for simple method)
-            qpoint: q-point in conventional reciprocal basis
-            small_rep: Small representation matrices (for full method)
-            opd: Order parameter direction (for full method)
-            little_rots: Rotations of the little group
-            little_trans: Translations of the little group
-
-        Returns:
-            (spg_number, spg_symbol, volume_ratio)
-            volume_ratio is V_daughter_primitive / V_parent_primitive
-        """
         info = self.spacegroup_info
         
-        # Transform q-point to primitive reciprocal basis
-        P, _ = self._get_transformation_matrices()
+        P, P_inv = self._get_transformation_matrices()
+        P_dir = np.linalg.inv(P.T)
+        P_dir_inv = P.T
+        
         qpoint_prim = np.dot(P, qpoint)
         
-        # Use primitive lattice as base to correctly handle centered groups
-        base_lattice = info.primitive_lattice
+        conv_lattice = _get_crystal_system_lattice(self.spg_number)
         
-        # Determine supercell size from q-point (in primitive reciprocal basis)
         import math
         denoms = [1, 1, 1]
         
-        # If star is provided, use all arms. Otherwise just use qpoint_prim.
         k_points = star if star is not None else [qpoint_prim]
-        
         for k_pt in k_points:
-            for i, x in enumerate(k_pt):
+            k_conv = np.dot(P_inv, k_pt)
+            for i, x in enumerate(k_conv):
                 if np.isclose(x, 0, atol=1e-5):
                     continue
                 for d in range(1, 13):
@@ -1744,25 +1728,24 @@ class ChiralTransitionFinder:
                         denoms[i] = abs(denoms[i] * d) // math.gcd(denoms[i], d)
                         break
         
-        S = np.diag(denoms)
-        S_inv = np.linalg.inv(S)
-        
-        # New lattice
-        lattice = np.dot(S, base_lattice)
+        S_conv = np.diag(denoms)
+        S_conv_inv = np.linalg.inv(S_conv)
+        lattice = np.dot(S_conv, conv_lattice)
         
         sc_rots = []
         sc_trans = []
         
-        # Collect all translations n of the primitive lattice within the supercell
-        from itertools import product
         lattice_trans_n = []
-        for nx, ny, nz in product(range(denoms[0]), range(denoms[1]), range(denoms[2])):
-            lattice_trans_n.append(np.array([nx, ny, nz]))
+        from itertools import product
+        M = max(denoms) + 2
+        for nx, ny, nz in product(range(-M, M+1), repeat=3):
+            n_prim = np.array([nx, ny, nz])
+            n_sc = np.dot(S_conv_inv, np.dot(P_dir_inv, n_prim))
+            if np.all(n_sc > -1e-5) and np.all(n_sc < 1 - 1e-5):
+                lattice_trans_n.append(n_prim)
 
         if full_reps is not None and star is not None and opd is not None:
-            # We have the full induced representations.
             dim_small_rep = full_reps[0].shape[0] // len(star)
-            
             for j in range(len(info.primitive_rotations)):
                 r = info.primitive_rotations[j]
                 t = info.primitive_translations[j]
@@ -1771,25 +1754,24 @@ class ChiralTransitionFinder:
                     continue
                     
                 for n in lattice_trans_n:
-                        # Construct block phase matrix
-                        phase_mat = np.zeros_like(mat_j, dtype=complex)
-                        for idx_star, k in enumerate(star):
-                            phase = np.exp(-2j * np.pi * np.dot(k, n))
-                            start_idx = idx_star * dim_small_rep
-                            end_idx = start_idx + dim_small_rep
-                            phase_mat[start_idx:end_idx, start_idx:end_idx] = np.eye(dim_small_rep) * phase
-                            
-                        mat = np.dot(phase_mat, mat_j)
-                        diff = np.linalg.norm(np.dot(mat, opd) - opd)
-                        if diff < 1e-5:
-                            r_prime = np.dot(S_inv, np.dot(r, S))
-                            t_prime = np.dot(S_inv, t + n)
-                            sc_rots.append(r_prime)
-                            sc_trans.append(t_prime)
+                    phase_mat = np.zeros_like(mat_j, dtype=complex)
+                    for idx_star, k in enumerate(star):
+                        phase = np.exp(-2j * np.pi * np.dot(k, n))
+                        start_idx = idx_star * dim_small_rep
+                        end_idx = start_idx + dim_small_rep
+                        phase_mat[start_idx:end_idx, start_idx:end_idx] = np.eye(dim_small_rep) * phase
+                        
+                    mat = np.dot(phase_mat, mat_j)
+                    diff = np.linalg.norm(np.dot(mat, opd) - opd)
+                    if diff < 1e-5:
+                        r_conv = np.dot(P_dir_inv, np.dot(r, P_dir))
+                        r_prime = np.dot(S_conv_inv, np.dot(r_conv, S_conv))
+                        t_conv = np.dot(P_dir_inv, t + n)
+                        t_prime = np.dot(S_conv_inv, t_conv)
+                        sc_rots.append(r_prime)
+                        sc_trans.append(t_prime)
                         
         elif little_rots is not None and little_trans is not None:
-            # We have the operations directly.
-            # If small_rep/opd are provided, filter them.
             if small_rep is not None and opd is not None:
                 for j in range(len(little_rots)):
                     r = little_rots[j]
@@ -1801,37 +1783,32 @@ class ChiralTransitionFinder:
                         mat = mat_j * phase
                         diff = np.linalg.norm(np.dot(mat, opd) - opd)
                         if diff < 1e-5:
-                            r_prime = np.dot(S_inv, np.dot(r, S))
-                            t_prime = np.dot(S_inv, t + n)
+                            r_conv = np.dot(P_dir_inv, np.dot(r, P_dir))
+                            r_prime = np.dot(S_conv_inv, np.dot(r_conv, S_conv))
+                            t_conv = np.dot(P_dir_inv, t + n)
+                            t_prime = np.dot(S_conv_inv, t_conv)
                             sc_rots.append(r_prime)
                             sc_trans.append(t_prime)
             else:
-                # Use all provided little_rots (already filtered by subgroup_indices if needed)
                 for r, t in zip(little_rots, little_trans):
-                    # We might need to try different lattice shifts n for non-Gamma q-points
-                    # but for simple cases (Gamma or proper subgroup), n=0 is usually fine.
-                    # To be safe, if qpoint is not Gamma, we should try all n.
-                    if np.allclose(qpoint_prim, 0):
-                        r_prime = np.dot(S_inv, np.dot(r, S))
-                        t_prime = np.dot(S_inv, t)
+                    for n in lattice_trans_n:
+                        r_conv = np.dot(P_dir_inv, np.dot(r, P_dir))
+                        r_prime = np.dot(S_conv_inv, np.dot(r_conv, S_conv))
+                        t_conv = np.dot(P_dir_inv, t + n)
+                        t_prime = np.dot(S_conv_inv, t_conv)
                         sc_rots.append(r_prime)
                         sc_trans.append(t_prime)
-                    else:
-                        # This part is tricky for simple method at non-Gamma.
-                        # For now, let's use n=0 as a default.
-                        r_prime = np.dot(S_inv, np.dot(r, S))
-                        t_prime = np.dot(S_inv, t)
-                        sc_rots.append(r_prime)
-                        sc_trans.append(t_prime)
+
         elif subgroup_indices is not None and len(subgroup_indices) > 0:
-            # Simple method
             target_rots = info.primitive_rotations[subgroup_indices]
             target_trans = info.primitive_translations[subgroup_indices]
             
             if np.allclose(qpoint_prim, 0):
                 for r, t in zip(target_rots, target_trans):
-                    r_prime = np.dot(S_inv, np.dot(r, S))
-                    t_prime = np.dot(S_inv, t)
+                    r_conv = np.dot(P_dir_inv, np.dot(r, P_dir))
+                    r_prime = np.dot(S_conv_inv, np.dot(r_conv, S_conv))
+                    t_conv = np.dot(P_dir_inv, t)
+                    t_prime = np.dot(S_conv_inv, t_conv)
                     sc_rots.append(r_prime)
                     sc_trans.append(t_prime)
             else:
@@ -1843,40 +1820,45 @@ class ChiralTransitionFinder:
                     temp_sc_rots = []
                     temp_sc_trans = []
                     for r, t in zip(target_rots, target_trans):
-                        r_prime = np.dot(S_inv, np.dot(r, S))
-                        t_prime = np.dot(S_inv, t + n_shift)
+                        r_conv = np.dot(P_dir_inv, np.dot(r, P_dir))
+                        r_prime = np.dot(S_conv_inv, np.dot(r_conv, S_conv))
+                        t_conv = np.dot(P_dir_inv, t + n_shift)
+                        t_prime = np.dot(S_conv_inv, t_conv)
                         temp_sc_rots.append(r_prime)
                         temp_sc_trans.append(t_prime)
                     
                     try:
-                        temp_sc_rots_arr = np.array(temp_sc_rots, dtype='intc')
+                        temp_sc_rots_arr = np.round(temp_sc_rots).astype('intc')
                         temp_sc_trans_arr = np.array(temp_sc_trans, dtype='double')
                         sg_type = spglib.get_spacegroup_type_from_symmetry(
                             temp_sc_rots_arr, temp_sc_trans_arr, lattice=lattice, symprec=self.symprec
                         )
-                        if sg_type is not None and is_sohncke(sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)):
-                            if sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0) > best_num:
-                                best_num = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
-                                best_sym = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
-                                # Calculate volume ratio for this best candidate
-                                x, y, z = 0.123, 0.456, 0.789
-                                all_pos = []
-                                for r, t in zip(temp_sc_rots_arr, temp_sc_trans_arr):
-                                    all_pos.append((np.dot(r, [x,y,z]) + t) % 1.0)
-                                all_pos = np.array(all_pos)
-                                numbers = np.ones(len(all_pos), dtype='intc')
-                                cell = (lattice, all_pos, numbers)
-                                prim_cell = spglib.find_primitive(cell, symprec=self.symprec)
-                                if prim_cell:
-                                    vol_daughter = np.abs(np.linalg.det(prim_cell[0]))
-                                    vol_parent_prim = np.abs(np.linalg.det(info.primitive_lattice))
-                                    best_vol_ratio = vol_daughter / vol_parent_prim
+                        if sg_type is not None:
+                            num = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
+                            from anaddb_irreps.chiral_transitions import is_sohncke
+                            if is_sohncke(num):
+                                if num > best_num:
+                                    best_num = num
+                                    best_sym = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
+                                    
+                                    x, y, z = 0.123, 0.456, 0.789
+                                    all_pos = []
+                                    for r_op, t_op in zip(temp_sc_rots_arr, temp_sc_trans_arr):
+                                        all_pos.append((np.dot(r_op, [x,y,z]) + t_op) % 1.0)
+                                    all_pos = np.array(all_pos)
+                                    numbers = np.ones(len(all_pos), dtype='intc')
+                                    cell = (lattice, all_pos, numbers)
+                                    prim_cell = spglib.find_primitive(cell, symprec=self.symprec)
+                                    if prim_cell:
+                                        vol_daughter = np.abs(np.linalg.det(prim_cell[0]))
+                                        vol_parent_prim = np.abs(np.linalg.det(info.primitive_lattice))
+                                        best_vol_ratio = vol_daughter / vol_parent_prim
                     except Exception:
                         pass
                 
                 if best_num > 0:
                     return best_num, best_sym, best_vol_ratio
-        
+
         if not sc_rots:
             return 0, "Unknown", 1.0
 
@@ -1888,11 +1870,13 @@ class ChiralTransitionFinder:
                 sc_rots, sc_trans, lattice=lattice, symprec=self.symprec
             )
             if sg_type is not None:
-                # Calculate volume ratio
+                num = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
+                symb = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
+                
                 x, y, z = 0.123, 0.456, 0.789
                 all_pos = []
-                for r, t in zip(sc_rots, sc_trans):
-                    all_pos.append((np.dot(r, [x,y,z]) + t) % 1.0)
+                for r_op, t_op in zip(sc_rots, sc_trans):
+                    all_pos.append((np.dot(r_op, [x,y,z]) + t_op) % 1.0)
                 all_pos = np.array(all_pos)
                 numbers = np.ones(len(all_pos), dtype='intc')
                 cell = (lattice, all_pos, numbers)
@@ -1901,8 +1885,8 @@ class ChiralTransitionFinder:
                     vol_daughter = np.abs(np.linalg.det(prim_cell[0]))
                     vol_parent_prim = np.abs(np.linalg.det(info.primitive_lattice))
                     volume_ratio = vol_daughter / vol_parent_prim
-                    return sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0), sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', ''), volume_ratio
-                return sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0), sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', ''), 1.0
+                    return num, symb, volume_ratio
+                return num, symb, 1.0
         except Exception:
             pass
 
@@ -2128,7 +2112,7 @@ class ChiralTransitionFinder:
                         except Exception:
                                         continue
 
-                    if daughter_num == 0 or not is_sohncke(daughter_num):
+                    if daughter_num == 0:
                         continue
 
                     # Success! Create transition

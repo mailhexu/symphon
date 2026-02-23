@@ -47,6 +47,7 @@ class IrRepsIrrep:
         )
         
         self._spacegroup_symbol = sg.name
+        self._spacegroup_number = int(sg.number_str.split('.')[0])
         self._degenerate_sets = degenerate_sets(self._freqs)
         
         # Get point group from symmetry operations
