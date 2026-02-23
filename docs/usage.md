@@ -335,6 +335,77 @@ Here, `(a,0)` leads to P4₃22 (#95) while `(0,a)` leads to its enantiomorph P4�
 
 ### Interpreting OPD Notation
 
+The **Order Parameter Direction (OPD)** describes the direction of symmetry breaking in the space of irreducible representations. Understanding OPD notation is essential for predicting which daughter crystal structures are accessible from a given phonon mode.
+
+#### What is an Order Parameter?
+
+In Landau theory of phase transitions, an **order parameter** is a physical quantity that is zero in the high-symmetry phase and non-zero in the low-symmetry phase. For structural phase transitions driven by phonons:
+
+- The order parameter components correspond to the **amplitude of atomic displacement patterns** associated with each basis vector of the irreducible representation
+- The **dimension** of the order parameter equals the dimension of the irrep
+- Different **directions** in this parameter space lead to different symmetry-breaking patterns
+
+#### OPD Notation Explained
+
+| OPD | Meaning | Example Physical Interpretation |
+|-----|---------|--------------------------------|
+| `(a)` | 1D irrep, single free parameter | The mode condenses with arbitrary amplitude `a`. Only one daughter group possible. |
+| `(a,0)` | 2D irrep, first component only | Only the first displacement pattern condenses; second pattern has zero amplitude. |
+| `(0,a)` | 2D irrep, second component only | Only the second displacement pattern condenses. Often leads to enantiomorphous partner of `(a,0)`. |
+| `(a,a)` | 2D irrep, diagonal direction | Both displacement patterns condense with equal amplitude. |
+| `(a,-a)` | 2D irrep, anti-diagonal | Both patterns condense but with opposite phases. May give different daughter than `(a,a)`. |
+| `(a,a,...)` | Multi-D irrep, all components equal | Diagonal direction in high-dimensional space. Often maximizes symmetry reduction. |
+| `(a,b,c,d)` | Multi-D irrep, distinct values | Complex displacement pattern with multiple independent amplitudes. |
+
+Here, `a`, `b`, `c`, `d` represent **free parameters** (real numbers) that can take any non-zero value. The actual magnitude determines how far the structure is from the transition point, but the **direction** (ratios between components) determines which daughter symmetry results.
+
+#### Key Concepts
+
+1. **Equivalent OPDs**: OPDs that differ only by an overall scale factor are equivalent:
+   - `(a,0)` ≡ `(2a,0)` ≡ `(-a,0)` (same direction)
+   - These all lead to the same daughter group
+
+2. **Collinear OPDs**: For 1D irreps, all OPDs are collinear (same direction), so:
+   - Only one OPD direction exists: `(a)`
+   - Only one daughter group possible (per irrep)
+
+3. **Non-collinear OPDs**: For multi-D irreps, different directions give different daughters:
+   - `(a,0)` and `(0,a)` are perpendicular directions → often different daughters
+   - `(a,a)` is diagonal → may give yet another daughter
+
+4. **Enantiomorphous pairs**: For Class II Sohncke groups:
+   - `(a,0)` might give P4₃22 (right-handed screw)
+   - `(0,a)` gives P4₁22 (left-handed screw)
+   - The handedness is determined by which component condenses
+
+#### Example: 2D Irrep with Multiple Daughters
+
+Consider a hypothetical 2D irrep E at a zone boundary:
+
+```
+OPD (a,0)  →  Daughter: P2₁ (screw along x)
+OPD (0,a)  →  Daughter: P2₁ (screw along y)  
+OPD (a,a)  →  Daughter: C2 (glide+rotation)
+```
+
+All three are valid symmetry-breaking patterns from the same phonon mode, but the **direction** of the order parameter determines which atomic displacement pattern actually occurs.
+
+#### Physical Interpretation
+
+The OPD components describe how atoms move during the phase transition:
+
+- **First component**: Amplitude of displacement pattern 1
+- **Second component**: Amplitude of displacement pattern 2
+- **...**
+
+For a 2D irrep with basis functions ψ₁ and ψ₂, the total displacement is:
+
+```
+δr = a·ψ₁ + b·ψ₂
+```
+
+where `(a,b)` is the OPD. Different choices of `a` and `b` give different displacement patterns, which may have different residual symmetries.
+
 | OPD | Meaning |
 |-----|---------|
 | `(a)` | 1D irrep, single free parameter |
