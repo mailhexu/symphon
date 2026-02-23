@@ -1719,12 +1719,12 @@ class ChiralTransitionFinder:
         
         k_points = star if star is not None else [qpoint_prim]
         for k_pt in k_points:
-            k_conv = np.dot(P_inv, k_pt)
-            for i, x in enumerate(k_conv):
-                if np.isclose(x, 0, atol=1e-5):
+            for i, x in enumerate(k_pt):
+                x_mod = x % 1.0
+                if np.isclose(x_mod, 0, atol=1e-5) or np.isclose(x_mod, 1, atol=1e-5):
                     continue
                 for d in range(1, 13):
-                    if np.isclose((x * d) % 1.0, 0, atol=1e-5):
+                    if np.isclose((x_mod * d) % 1.0, 0, atol=1e-5):
                         denoms[i] = abs(denoms[i] * d) // math.gcd(denoms[i], d)
                         break
         
