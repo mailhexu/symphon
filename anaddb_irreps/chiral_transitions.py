@@ -1421,8 +1421,10 @@ class ChiralTransitionFinder:
                                for t in transitions):
                         transitions.append(transition)
 
-            # Fallback for "Proper subgroup" (all proper rotations) if nothing found via irreps
-            if not found_at_q:
+            # Also try "Proper subgroup" (all proper rotations) for zone boundary q-points
+            # This matches the reference description of zone-boundary phonons leading to
+            # chiral groups like P222_1 (#17) or P2_12_12_1 (#19)
+            if not np.allclose(qp_prim, 0):  # Not Gamma point
                 proper_indices = []
                 for i, rot in enumerate(parent_info.primitive_rotations):
                     if np.linalg.det(rot) > 0:
@@ -1440,40 +1442,48 @@ class ChiralTransitionFinder:
                     )
                     
                     if daughter_num != 0 and is_sohncke(daughter_num):
-                        daughter_info = ChiralTransitionFinder(daughter_num).spacegroup_info
-                        parent_prim_order = len(parent_info.primitive_rotations)
-                        daughter_prim_order = len(daughter_info.primitive_rotations)
-                        domain_mult = (parent_prim_order / daughter_prim_order) * vol_ratio
-                        
-                        daughter_rot = parent_info.primitive_rotations[proper_indices]
-                        daughter_trans = parent_info.primitive_translations[proper_indices]
-                        lost_ops = self._analyze_lost_operations(
-                            parent_info.rotations, parent_info.translations,
-                            daughter_rot, daughter_trans
+                        # Check if we already have this daughter
+                        already_found = any(
+                            t.daughter_spg_number == daughter_num and
+                            np.allclose(t.qpoint, qp_conv)
+                            for t in transitions
                         )
                         
-                        transition = ChiralTransition(
-                            parent_spg_number=self.spg_number,
-                            parent_spg_symbol=parent_info.symbol,
-                            parent_spg_order=parent_info.order,
-                            qpoint=qp_conv.copy(),
-                            qpoint_label=qp_label,
-                            irrep_label="ProperSubgroup",
-                            irrep_dimension=0,
-                            opd=OrderParameterDirection(np.array([1.0]), "(proper)", 1),
-                            daughter_spg_number=daughter_num,
-                            daughter_spg_symbol=daughter_sym,
-                            daughter_spg_order=daughter_info.order,
-                            domain_multiplicity=int(round(domain_mult)),
-                            enantiomeric_domain_count=1,
-                            lost_operations=lost_ops,
-                            lost_inversion=any(op.operation_type == ImproperOperationType.INVERSION for op in lost_ops),
-                            lost_mirrors=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.MIRROR),
-                            lost_glides=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.GLIDE),
-                            sohncke_class=get_sohncke_class(daughter_num),
-                            enantiomorph_partner=get_enantiomorph_partner(daughter_num)
-                        )
-                        transitions.append(transition)
+                        if not already_found:
+                            daughter_info = ChiralTransitionFinder(daughter_num).spacegroup_info
+                            parent_prim_order = len(parent_info.primitive_rotations)
+                            daughter_prim_order = len(daughter_info.primitive_rotations)
+                            domain_mult = (parent_prim_order / daughter_prim_order) * vol_ratio
+                            
+                            daughter_rot = parent_info.primitive_rotations[proper_indices]
+                            daughter_trans = parent_info.primitive_translations[proper_indices]
+                            lost_ops = self._analyze_lost_operations(
+                                parent_info.rotations, parent_info.translations,
+                                daughter_rot, daughter_trans
+                            )
+                            
+                            transition = ChiralTransition(
+                                parent_spg_number=self.spg_number,
+                                parent_spg_symbol=parent_info.symbol,
+                                parent_spg_order=parent_info.order,
+                                qpoint=qp_conv.copy(),
+                                qpoint_label=qp_label,
+                                irrep_label="ProperSubgroup",
+                                irrep_dimension=0,
+                                opd=OrderParameterDirection(np.array([1.0]), "(proper)", 1),
+                                daughter_spg_number=daughter_num,
+                                daughter_spg_symbol=daughter_sym,
+                                daughter_spg_order=daughter_info.order,
+                                domain_multiplicity=int(round(domain_mult)),
+                                enantiomeric_domain_count=1,
+                                lost_operations=lost_ops,
+                                lost_inversion=any(op.operation_type == ImproperOperationType.INVERSION for op in lost_ops),
+                                lost_mirrors=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.MIRROR),
+                                lost_glides=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.GLIDE),
+                                sohncke_class=get_sohncke_class(daughter_num),
+                                enantiomorph_partner=get_enantiomorph_partner(daughter_num)
+                            )
+                            transitions.append(transition)
 
         return transitions
 
@@ -2190,6 +2200,73 @@ class ChiralTransitionFinder:
                     
                     if not is_duplicate:
                         transitions.append(transition)
+
+            # Also try "Proper subgroup" (all proper rotations) for zone boundary q-points
+            # This matches the reference description of zone-boundary phonons leading to
+            # chiral groups like P222_1 (#17) or P2_12_12_1 (#19)
+            if not np.allclose(qp_prim, 0):  # Not Gamma point
+                proper_indices = []
+                for i, rot in enumerate(parent_info.primitive_rotations):
+                    if np.linalg.det(rot) > 0:
+                        # Check if it's in little group at q
+                        rot_q = np.dot(rot.T, qp_prim)
+                        if np.allclose((rot_q - qp_prim + 0.5) % 1.0, 0.5):
+                            proper_indices.append(i)
+                
+                if proper_indices:
+                    try:
+                        daughter_num, daughter_sym, vol_ratio = self._identify_daughter_spacegroup(
+                            subgroup_indices=None,
+                            qpoint=qp_conv,
+                            little_rots=parent_info.primitive_rotations[proper_indices],
+                            little_trans=parent_info.primitive_translations[proper_indices]
+                        )
+                        
+                        if daughter_num != 0 and is_sohncke(daughter_num):
+                            # Check if we already have this daughter
+                            already_found = any(
+                                t.daughter_spg_number == daughter_num and
+                                np.allclose(t.qpoint, qp_conv)
+                                for t in transitions
+                            )
+                            
+                            if not already_found:
+                                daughter_info = ChiralTransitionFinder(daughter_num).spacegroup_info
+                                parent_prim_order = len(parent_info.primitive_rotations)
+                                daughter_prim_order = len(daughter_info.primitive_rotations)
+                                domain_mult = (parent_prim_order / daughter_prim_order) * vol_ratio
+                                
+                                daughter_rot = parent_info.primitive_rotations[proper_indices]
+                                daughter_trans = parent_info.primitive_translations[proper_indices]
+                                lost_ops = self._analyze_lost_operations(
+                                    parent_info.rotations, parent_info.translations,
+                                    daughter_rot, daughter_trans
+                                )
+                                
+                                transition = ChiralTransition(
+                                    parent_spg_number=self.spg_number,
+                                    parent_spg_symbol=parent_info.symbol,
+                                    parent_spg_order=parent_info.order,
+                                    qpoint=qp_conv.copy(),
+                                    qpoint_label=qp_label,
+                                    irrep_label="ProperSubgroup",
+                                    irrep_dimension=0,
+                                    opd=OrderParameterDirection(np.array([1.0]), "(proper)", 1),
+                                    daughter_spg_number=daughter_num,
+                                    daughter_spg_symbol=daughter_sym,
+                                    daughter_spg_order=daughter_info.order,
+                                    domain_multiplicity=int(round(domain_mult)),
+                                    enantiomeric_domain_count=1,
+                                    lost_operations=lost_ops,
+                                    lost_inversion=any(op.operation_type == ImproperOperationType.INVERSION for op in lost_ops),
+                                    lost_mirrors=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.MIRROR),
+                                    lost_glides=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.GLIDE),
+                                    sohncke_class=get_sohncke_class(daughter_num),
+                                    enantiomorph_partner=get_enantiomorph_partner(daughter_num)
+                                )
+                                transitions.append(transition)
+                    except Exception:
+                        pass
 
         return transitions
 
