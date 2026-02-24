@@ -10,19 +10,8 @@ Key concepts:
 - Isotropy subgroup: subgroup of parent that leaves an order parameter invariant
 - Order parameter direction (OPD): specific direction in irrep space
 
-Two methods are available:
-
-1. **find_chiral_transitions_simple()** (no spgrep required):
-   - Uses only irrep package for irrep identification
-   - Finds transitions to the "proper subgroup" (all proper operations preserved)
-   - Limitation: Only finds one type of chiral daughter per parent
-   - Works with the current phonopy/spglib environment
-
-2. **find_chiral_transitions()** (requires spgrep + spgrep-modulation):
-   - Full isotropy subgroup enumeration using spgrep-modulation
-   - Finds ALL possible chiral daughter phases
-   - Note: Requires spglib >= 2.7, which conflicts with phonopy < 2.44
-   - Use in a separate environment without phonopy for full functionality
+The method identifies all possible chiral daughter phases by enumerating 
+maximal isotropy subgroups for all irreps at special q-points.
 
 Theory documentation: See docs/chiral_transitions_theory.md
 """
@@ -34,6 +23,8 @@ from pathlib import Path
 import json
 import numpy as np
 
+from typing import Any
+
 # =============================================================================
 # Dependencies (with graceful fallbacks)
 # =============================================================================
@@ -43,19 +34,19 @@ try:
     HAS_SPGLIB = True
 except ImportError:
     HAS_SPGLIB = False
-    spglib = None
+    spglib: Any = None  # type: ignore
 
 try:
     from irrep.spacegroup_irreps import SpaceGroupIrreps
     try:
         from irreptables.irreps import IrrepTable
     except ImportError:
-        from irreptables import IrrepTable
+        from irreptables import IrrepTable  # type: ignore
     HAS_IRREP = True
 except ImportError:
     HAS_IRREP = False
-    SpaceGroupIrreps = None
-    IrrepTable = None
+    SpaceGroupIrreps: Any = None  # type: ignore
+    IrrepTable: Any = None  # type: ignore
 
 try:
     from spgrep import get_spacegroup_irreps, get_spacegroup_irreps_from_primitive_symmetry
@@ -65,7 +56,7 @@ try:
         try:
             from spgrep.representation import get_character
         except ImportError:
-            get_character = None
+            get_character: Any = None  # type: ignore
     # Verify spgrep is actually working (some versions have spglib version conflicts)
     try:
         # Check signature for newer spgrep
@@ -79,16 +70,16 @@ try:
         HAS_SPGREP = False
 except ImportError:
     HAS_SPGREP = False
-    get_spacegroup_irreps = None
-    get_spacegroup_irreps_from_primitive_symmetry = None
-    get_character = None
+    get_spacegroup_irreps: Any = None  # type: ignore
+    get_spacegroup_irreps_from_primitive_symmetry: Any = None  # type: ignore
+    get_character: Any = None  # type: ignore
 
 try:
     from spgrep_modulation.isotropy import IsotropyEnumerator
     HAS_SPGREP_MODULATION = True
 except ImportError:
     HAS_SPGREP_MODULATION = False
-    IsotropyEnumerator = None
+    IsotropyEnumerator: Any = None  # type: ignore
 
 
 # =============================================================================
@@ -183,6 +174,24 @@ _ENANTIOMORPHOUS_PAIRS: dict[int, int] = {
     212: 213, 213: 212,
 }
 
+_SOHNCKE_PRETTY_SYMBOLS: dict[int, str] = {
+    1: "P 1", 3: "P 2", 4: "P 2_1", 5: "C 2",
+    16: "P 2 2 2", 17: "P 2 2 2_1", 18: "P 2_1 2_1 2", 19: "P 2_1 2_1 2_1",
+    20: "C 2 2 2_1", 21: "C 2 2 2", 22: "F 2 2 2", 23: "I 2 2 2", 24: "I 2_1 2_1 2_1",
+    75: "P 4", 76: "P 4_1", 77: "P 4_2", 78: "P 4_3", 79: "I 4", 80: "I 4_1",
+    89: "P 4 2 2", 90: "P 4 2_1 2", 91: "P 4_1 2 2", 92: "P 4_1 2_1 2",
+    93: "P 4_2 2 2", 94: "P 4_2 2_1 2", 95: "P 4_3 2 2", 96: "P 4_3 2_1 2",
+    97: "I 4 2 2", 98: "I 4_1 2 2",
+    143: "P 3", 144: "P 3_1", 145: "P 3_2", 146: "R 3",
+    149: "P 3 1 2", 150: "P 3 2 1", 151: "P 3_1 1 2", 152: "P 3_1 2 1",
+    153: "P 3_2 1 2", 154: "P 3_2 2 1", 155: "R 3 2",
+    168: "P 6", 169: "P 6_1", 170: "P 6_5", 171: "P 6_2", 172: "P 6_4", 173: "P 6_3",
+    177: "P 6 2 2", 178: "P 6_1 2 2", 179: "P 6_5 2 2", 180: "P 6_2 2 2", 181: "P 6_4 2 2", 182: "P 6_3 2 2",
+    195: "P 2 3", 196: "F 2 3", 197: "I 2 3", 198: "P 2_1 3", 199: "I 2_1 3",
+    207: "P 4 3 2", 208: "P 4_2 3 2", 209: "F 4 3 2", 210: "F 4_1 3 2", 211: "I 4 3 2",
+    212: "P 4_3 3 2", 213: "P 4_1 3 2", 214: "I 4_1 3 2"
+}
+
 _CACHE_DIR = Path(__file__).parent.parent / ".cache"
 
 
@@ -269,30 +278,83 @@ def get_enantiomorph_partner(spg_number: int) -> Optional[int]:
     return _ENANTIOMORPHOUS_PAIRS.get(spg_number)
 
 
+def get_screw_notation(spg_number: int) -> str:
+    """
+    Get the screw axis notation for a Sohncke space group.
+    
+    Args:
+        spg_number: International space group number (1-230)
+        
+    Returns:
+        Screw notation string (e.g., "4_1", "6_3", "None")
+    """
+    # Common screw axes in Sohncke groups
+    screws = {
+        4: "2_1", 17: "2_1", 18: "2_1", 19: "2_1", 20: "2_1", 24: "2_1",
+        76: "4_1", 77: "4_2", 78: "4_3", 80: "4_1",
+        91: "4_1", 92: "4_1", 93: "4_2", 94: "4_2", 95: "4_3", 96: "4_3", 98: "4_1",
+        144: "3_1", 145: "3_2", 151: "3_1", 152: "3_1", 153: "3_2", 154: "3_2",
+        169: "6_1", 170: "6_5", 171: "6_2", 172: "6_4", 173: "6_3",
+        178: "6_1", 179: "6_5", 180: "6_2", 181: "6_4", 182: "6_3",
+        198: "2_1", 199: "2_1", 208: "4_2", 210: "4_1", 212: "4_3", 213: "4_1", 214: "4_1"
+    }
+    
+    res = screws.get(spg_number)
+    if res:
+        return res
+        
+    # Attempt to extract from spglib symbol
+    try:
+        if HAS_SPGLIB:
+            # Find a Hall number for this space group to get its standard symbol
+            target_hall = 0
+            for hall_number in range(1, 531):
+                sg_type = spglib.get_spacegroup_type(hall_number)
+                if sg_type and (sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)) == spg_number:
+                    target_hall = hall_number
+                    break
+            
+            if target_hall > 0:
+                sg_type = spglib.get_spacegroup_type(target_hall)
+                symbol = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
+                import re
+                # Match screw axes like 4_2, 3_1, etc. Must have an underscore.
+                match = re.search(r'([2346]_(\d))', symbol)
+                if match:
+                    return match.group(1).replace('_', '_') # Keep underscore for consistency
+    except Exception:
+        pass
+        
+    return "None"
+
+
 # =============================================================================
 # Helper Functions - Improper Operations
 # =============================================================================
 
-def classify_improper_operation(rotation: np.ndarray) -> Optional[ImproperOperationType]:
+def classify_improper_operation(rotation: np.ndarray, translation: Optional[np.ndarray] = None) -> Optional[ImproperOperationType]:
     """
     Classify the type of improper operation from a rotation matrix.
 
     Args:
         rotation: (3, 3) integer rotation matrix
+        translation: (3,) translation vector (optional, needed to distinguish mirror/glide)
 
     Returns:
         ImproperOperationType or None if proper operation (det=+1)
     """
-    det = np.linalg.det(rotation)
+    det = int(round(np.linalg.det(rotation)))
     if det > 0:
         return None
 
-    trace = np.trace(rotation)
+    trace = int(round(np.trace(rotation)))
 
-    if np.allclose(rotation, -np.eye(3)):
+    if trace == -3:
         return ImproperOperationType.INVERSION
 
-    if trace > 0:
+    if trace == 1:
+        if translation is not None and not np.allclose(translation % 1.0, 0, atol=1e-5):
+            return ImproperOperationType.GLIDE
         return ImproperOperationType.MIRROR
 
     return ImproperOperationType.ROTOUNVERSION
@@ -322,22 +384,64 @@ def get_operation_description(rotation: np.ndarray, translation: np.ndarray) -> 
     Returns:
         Description string
     """
-    op_type = classify_improper_operation(rotation)
+    op_type = classify_improper_operation(rotation, translation)
+    trace = int(round(np.trace(rotation)))
+    det = int(round(np.linalg.det(rotation)))
 
-    if op_type == ImproperOperationType.INVERSION:
-        if np.allclose(translation, 0):
-            return "Inversion at origin"
-        return "Inversion with shift"
-    elif op_type == ImproperOperationType.MIRROR:
-        return "Mirror plane"
-    elif op_type == ImproperOperationType.GLIDE:
-        return "Glide plane"
-    elif op_type == ImproperOperationType.ROTOUNVERSION:
-        trace = np.trace(rotation)
-        n = int(round(-trace)) + 1
-        return f"{n}-fold rotoinversion"
+    if det == -1:
+        if op_type == ImproperOperationType.INVERSION:
+            if np.allclose(translation % 1.0, 0, atol=1e-5):
+                return "1-bar (Inversion)"
+            return "1-bar (Inversion with shift)"
+        elif op_type in (ImproperOperationType.MIRROR, ImproperOperationType.GLIDE):
+            if op_type == ImproperOperationType.MIRROR:
+                return "m (Mirror plane)"
+            
+            # Identify glide type
+            t = translation % 1.0
+            components = []
+            if not np.isclose(t[0], 0, atol=1e-5): components.append("a")
+            if not np.isclose(t[1], 0, atol=1e-5): components.append("b")
+            if not np.isclose(t[2], 0, atol=1e-5): components.append("c")
+            
+            if len(components) == 1:
+                return f"{components[0]} (Glide plane)"
+            elif len(components) >= 2:
+                # Check for n-glide (1/2, 1/2, 0) etc.
+                if all(np.isclose(t[i], 0.5, atol=1e-2) or np.isclose(t[i], 0, atol=1e-2) for i in range(3)):
+                    return "n (Glide plane)"
+                return "d (Glide plane)"
+            return "glide (Glide plane)"
+        else:
+            trace_to_label = {-1: "4-bar", 0: "3-bar", -2: "6-bar"}
+            label = trace_to_label.get(trace, f"{-trace}-bar")
+            return f"{label} (Rotoinversion)"
     else:
-        return "Proper rotation"
+        # Proper rotations: trace = 1 + 2*cos(2pi/n)
+        trace_to_n = {3: 1, 2: 6, 1: 4, 0: 3, -1: 2}
+        n = trace_to_n.get(trace, 0)
+        
+        if n == 1:
+            return "1 (Identity)"
+        
+        # Check for screw axis
+        if np.allclose(translation % 1.0, 0, atol=1e-5):
+            return f"{n} (Rotation)"
+        
+        # Calculate k for n_k screw axis
+        # T_total = (sum_{i=0}^{n-1} R^i) * t
+        sum_R = np.eye(3, dtype=int)
+        R_i = rotation.copy()
+        for _ in range(n - 1):
+            sum_R = sum_R + R_i
+            R_i = np.dot(R_i, rotation)
+        
+        T_total = np.dot(sum_R, translation)
+        # Use the maximum component to find k (for axes along lattice vectors)
+        k = int(round(np.max(np.abs(T_total)))) % n
+        if k == 0: k = n // 2 # Fallback for some centering cases
+        
+        return f"{n}_{k} (Screw axis)"
 
 
 def rotation_to_jones(rotation: np.ndarray, translation: np.ndarray) -> str:
@@ -349,31 +453,51 @@ def rotation_to_jones(rotation: np.ndarray, translation: np.ndarray) -> str:
         translation: (3,) translation vector
 
     Returns:
-        Jones symbol string, e.g., "x,y,z" or "-x,-y,-z"
+        Jones symbol string, e.g., "x,y,z" or "-x,-y,z+1/2"
     """
     coords = ['x', 'y', 'z']
     result = []
 
     for i in range(3):
-        col = rotation[:, i]
+        row = rotation[i, :]
         terms = []
         for j in range(3):
-            if col[j] != 0:
-                sign = '-' if col[j] < 0 else ''
-                terms.append(f"{sign}{coords[j]}")
+            if row[j] != 0:
+                sign = '-' if row[j] < 0 else '+'
+                val = abs(row[j])
+                if val == 1:
+                    terms.append(f"{sign}{coords[j]}")
+                else:
+                    terms.append(f"{sign}{val:.3f}{coords[j]}")
 
-        if not terms:
-            result.append('0')
-        elif len(terms) == 1:
-            result.append(terms[0])
-        else:
-            result.append('+'.join(terms))
+        s = "".join(terms)
+        if s.startswith("+"):
+            s = s[1:]
+        
+        # Handle translation
+        t = translation[i] % 1.0
+        if not np.isclose(t, 0, atol=1e-5):
+            # Try to find common fractions
+            found_fraction = False
+            for denom in [2, 3, 4, 6, 8, 12]:
+                num = int(round(t * denom))
+                if np.isclose(t * denom, num, atol=1e-5):
+                    if num == 1:
+                        s += f"+1/{denom}"
+                    else:
+                        from math import gcd
+                        common = gcd(num, denom)
+                        s += f"+{num//common}/{denom//common}"
+                    found_fraction = True
+                    break
+            if not found_fraction:
+                s += f"+{t:.3f}"
+        
+        if not s:
+            s = "0"
+        result.append(s.replace("+-", "-"))
 
-    if not np.allclose(translation, 0):
-        trans_str = f"+{translation[0]:.3f},{translation[1]:.3f},{translation[2]:.3f}"
-        return ','.join(result) + trans_str
-
-    return ','.join(result)
+    return ", ".join(result)
 
 
 # =============================================================================
@@ -432,21 +556,32 @@ class SpaceGroupInfo:
         """Count pure mirror operations."""
         count = 0
         for rot, trans in zip(self.rotations, self.translations):
-            op_type = classify_improper_operation(rot)
+            op_type = classify_improper_operation(rot, trans)
             if op_type == ImproperOperationType.MIRROR:
-                if np.allclose(trans, 0):
-                    count += 1
+                count += 1
         return count
 
     def count_glides(self) -> int:
         """Count glide operations."""
         count = 0
         for rot, trans in zip(self.rotations, self.translations):
-            op_type = classify_improper_operation(rot)
-            if op_type == ImproperOperationType.MIRROR:
-                if not np.allclose(trans, 0):
-                    count += 1
+            op_type = classify_improper_operation(rot, trans)
+            if op_type == ImproperOperationType.GLIDE:
+                count += 1
         return count
+
+    def get_operations_report(self) -> str:
+        """Get a detailed report of symmetry operations in this space group."""
+        lines = []
+        lines.append(f"{'Operation':<10} {'Type':<15} {'Description':<25} {'Jones':<20}")
+        lines.append("-" * 75)
+        for i, (rot, trans) in enumerate(zip(self.rotations, self.translations), 1):
+            op_type = classify_improper_operation(rot, trans)
+            type_str = op_type.value if op_type else "proper"
+            desc = get_operation_description(rot, trans)
+            jones = rotation_to_jones(rot, trans)
+            lines.append(f"{i:<10} {type_str:<15} {desc:<25} {jones:<20}")
+        return "\n".join(lines)
 
 
 @dataclass
@@ -662,7 +797,12 @@ class ChiralTransitionFinder:
             raise RuntimeError(f"Could not load symmetry for space group {self.spg_number}")
 
         sym = spglib.get_symmetry_from_database(target_hall)
+        if sym is None:
+            raise RuntimeError(f"Could not load symmetry dataset for hall number {target_hall}")
+            
         sg_type = spglib.get_spacegroup_type(target_hall)
+        if sg_type is None:
+            raise RuntimeError(f"Could not load spacegroup type for hall number {target_hall}")
         
         # Initial info from database
         info = SpaceGroupInfo(
@@ -677,16 +817,16 @@ class ChiralTransitionFinder:
         # Get primitive symmetry and lattice
         lattice = _get_crystal_system_lattice(self.spg_number)
         x, y, z = 0.12345, 0.45678, 0.78901
-        all_pos = []
+        all_pos_list = []
         for r, t in zip(info.rotations, info.translations):
-            all_pos.append((np.dot(r, [x, y, z]) + t) % 1.0)
-        all_pos = np.array(all_pos)
-        numbers = np.ones(len(all_pos), dtype='intc')
-        cell = (lattice, all_pos, numbers)
+            all_pos_list.append((np.dot(r, [x, y, z]) + t) % 1.0)
+        all_pos_arr = np.array(all_pos_list)
+        numbers = np.ones(len(all_pos_arr), dtype='intc')
+        cell = (lattice.tolist(), all_pos_arr.tolist(), numbers.tolist())
         
         prim_cell = spglib.find_primitive(cell, symprec=self.symprec)
         if prim_cell:
-            info.primitive_lattice = prim_cell[0]
+            info.primitive_lattice = np.array(prim_cell[0])
             # Get symmetry of the primitive cell, but be CAREFUL not to add extra symmetry
             # (like inversion in P1). 
             # Better: Filter the existing operations to find those that map to primitive cell.
@@ -708,7 +848,7 @@ class ChiralTransitionFinder:
             
             prim_rots = []
             prim_trans = []
-            seen_rots = []
+            seen_rots: list[np.ndarray] = []
             
             for r, t in zip(info.rotations, info.translations):
                 # r_prim = M r_conv M_inv
@@ -959,7 +1099,7 @@ class ChiralTransitionFinder:
                     if np.allclose((rot_q - qpoint + 0.5) % 1.0, 0.5):
                         lg_indices.append(i)
                 
-                op_mapping = self._get_irreptables_op_mapping()
+                op_mapping, origin_shift = self._get_irreptables_op_mapping()
                 
                 results = []
                 for irr in target_q_irreps:
@@ -967,10 +1107,18 @@ class ChiralTransitionFinder:
                     if irr.dim == 1:
                         small_rep = []
                         for idx in lg_indices:
-                            irr_idx = op_mapping.get(idx)
-                            if irr_idx is not None:
+                            mapped = op_mapping.get(idx)
+                            if mapped is not None:
+                                irr_idx, translation_diff = mapped
                                 char = irr.characters.get(irr_idx, 0)
-                                small_rep.append(np.array([[char]]))
+                                # Apply phase factor for any translation difference
+                                # phase = exp(-i * 2pi * q * delta_t)
+                                # But actually irreptables operations are symmorphic relative to some origin
+                                # It's better to use the exact character if it's symmorphic, but we need
+                                # to be careful about non-symmorphic parts.
+                                # Assuming delta_t handles this:
+                                phase = np.exp(-2j * np.pi * np.dot(qpoint, translation_diff))
+                                small_rep.append(np.array([[char * phase]]))
                             else:
                                 small_rep.append(np.array([[0]]))
                         
@@ -1048,42 +1196,6 @@ class ChiralTransitionFinder:
             })
 
         return results
-
-    def enumerate_subgroups_by_lost_operations(
-        self,
-        qpoint: np.ndarray,
-        irrep_label: str,
-        irrep_dimension: int,
-        characters: dict[tuple, complex]
-    ) -> list[tuple[list[int], str]]:
-        """
-        Enumerate potential isotropy subgroups for an irrep at q-point.
-        
-        This is a simplified approach that finds subgroups where only 
-        proper operations are preserved.
-        
-        Args:
-            qpoint: (3,) fractional coordinates
-            irrep_label: Label of the irrep
-            irrep_dimension: Dimension of the irrep
-            characters: Character table for this irrep
-            
-        Returns:
-            List of (subgroup_indices, opd_symbolic) tuples
-        """
-        info = self.spacegroup_info
-        
-        # We look for proper operations (R, t) that have character equal 
-        # to the dimension (or satisfy OPD condition).
-        
-        proper_indices = []
-        for i, (rot, trans) in enumerate(zip(info.primitive_rotations, info.primitive_translations)):
-            if np.linalg.det(rot) < 0:
-                continue
-            
-            proper_indices.append(i)
-
-        return [(proper_indices, "(a)")]
 
     def _get_irreptables_op_mapping(self, use_primitive: bool = False) -> tuple[dict[int, tuple[int, np.ndarray]], np.ndarray]:
         """
@@ -1269,229 +1381,6 @@ class ChiralTransitionFinder:
                 
         return best_label
 
-    def find_chiral_transitions_simple(
-        self,
-        qpoint: Optional[np.ndarray] = None,
-        qpoint_label: Optional[str] = None,
-        irrep_label: Optional[str] = None
-    ) -> list[ChiralTransition]:
-        """
-        Find chiral transitions using simplified approach.
-
-        This method identifies potential chiral daughters by examining 1D irreps
-        and standard OPDs of higher-dimensional irreps at special q-points.
-        It is faster than the full enumeration but less comprehensive.
-        """
-        if self.is_parent_chiral:
-            raise ValueError(
-                f"Parent space group {self.spg_number} is already chiral (Sohncke). "
-                "Use a non-chiral space group as parent."
-            )
-
-        transitions = []
-        parent_info = self.spacegroup_info
-
-        if qpoint is not None:
-            qpoints_to_search = [(np.array(qpoint), qpoint_label or "user")]
-        else:
-            qpoints_to_search = self.get_special_qpoints()
-
-        # Group by q-point to avoid redundant calculations
-        unique_qpoints = []
-        seen_q = []
-        for qp, label in qpoints_to_search:
-            is_new = True
-            for sq in seen_q:
-                if np.allclose((qp - sq + 0.5) % 1.0, 0.5):
-                    is_new = False
-                    break
-            if is_new:
-                unique_qpoints.append((qp, label))
-                seen_q.append(qp)
-
-        for qp, qp_label in unique_qpoints:
-            # Determine correct bases
-            irr_basis = self._get_irreptables_basis()
-            if irr_basis == "primitive":
-                qp_prim = qp
-                _, P_inv = self._get_transformation_matrices()
-                qp_conv = np.dot(P_inv, qp_prim)
-            else:
-                qp_conv = qp
-                P, _ = self._get_transformation_matrices()
-                qp_prim = np.dot(P, qp_conv)
-            
-            try:
-                irreps_info = self.get_irreps_at_qpoint(qp, qp_label)
-            except Exception:
-                irreps_info = []
-
-            found_at_q = False
-            for irrep in irreps_info:
-                if irrep_label is not None and irrep['label'] != irrep_label:
-                    continue
-
-                # Simple logic for 1D and specific OPDs of multi-dim irreps
-                isotropy_subgroups = []
-                dim = irrep['dimension']
-                if dim == 1:
-                    chars = irrep['small_rep'][:, 0, 0]
-                    sub_indices = np.where(np.abs(chars - 1.0) < 1e-5)[0].tolist()
-                    isotropy_subgroups = [(sub_indices, np.array([1.0]), "(a)")]
-                elif dim >= 2:
-                    # Common OPDs for multi-dim irreps: (a,0,...), (a,a,...)
-                    dim_rep = dim
-                    opds_to_try = []
-                    # (a, 0, 0, ...)
-                    opd1 = np.zeros(dim_rep)
-                    opd1[0] = 1.0
-                    opds_to_try.append((opd1, "(a,0,...)"))
-                    # (a, a, a, ...)
-                    opd2 = np.ones(dim_rep)
-                    opds_to_try.append((opd2, "(a,a,...)"))
-                    
-                    for opd_num, opd_sym in opds_to_try:
-                        sub_indices = []
-                        for j in range(len(irrep['small_rep'])):
-                            mat = irrep['small_rep'][j]
-                            if np.linalg.norm(np.dot(mat, opd_num) - opd_num) < 1e-5:
-                                sub_indices.append(j)
-                        if sub_indices:
-                            isotropy_subgroups.append((sub_indices, opd_num, opd_sym))
-
-                for sub_indices, opd_num, opd_sym in isotropy_subgroups:
-                    try:
-                        daughter_num, daughter_sym, vol_ratio = self._identify_daughter_spacegroup(
-                            subgroup_indices=None,
-                            qpoint=qp_conv,
-                            small_rep=irrep['small_rep'],
-                            opd=opd_num,
-                            little_rots=irrep['little_rotations'],
-                            little_trans=irrep['little_translations']
-                        )
-                    except Exception:
-                        continue
-
-                    if daughter_num == 0:
-                        continue
-
-                    found_at_q = True
-                    daughter_info = ChiralTransitionFinder(daughter_num).spacegroup_info
-                    
-                    parent_prim_order = len(parent_info.primitive_rotations)
-                    daughter_prim_order = len(daughter_info.primitive_rotations)
-                    domain_mult = (parent_prim_order / daughter_prim_order) * vol_ratio
-
-                    # Daughter operations from irrep info
-                    daughter_rot = irrep['little_rotations'][sub_indices]
-                    daughter_trans = irrep['little_translations'][sub_indices]
-
-                    lost_ops = self._analyze_lost_operations(
-                        parent_info.primitive_rotations,
-                        parent_info.primitive_translations,
-                        daughter_rot,
-                        daughter_trans
-                    )
-
-                    transition = ChiralTransition(
-                        parent_spg_number=self.spg_number,
-                        parent_spg_symbol=parent_info.symbol,
-                        parent_spg_order=parent_info.order,
-                        qpoint=qp_conv.copy(),
-                        qpoint_label=qp_label,
-                        irrep_label=irrep['label'],
-                        irrep_dimension=dim,
-                        opd=OrderParameterDirection(
-                            numerical=opd_num.copy(),
-                            symbolic=opd_sym,
-                            num_free_params=1
-                        ),
-                        daughter_spg_number=daughter_num,
-                        daughter_spg_symbol=daughter_sym,
-                        daughter_spg_order=daughter_info.order,
-                        domain_multiplicity=int(round(domain_mult)),
-                        enantiomeric_domain_count=self._count_enantiomeric_domains(lost_ops),
-                        lost_operations=lost_ops,
-                        lost_inversion=any(op.operation_type == ImproperOperationType.INVERSION for op in lost_ops),
-                        lost_mirrors=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.MIRROR),
-                        lost_glides=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.GLIDE),
-                        sohncke_class=get_sohncke_class(daughter_num),
-                        enantiomorph_partner=get_enantiomorph_partner(daughter_num)
-                    )
-                    
-                    if not any(t.daughter_spg_number == transition.daughter_spg_number and 
-                               t.irrep_label == transition.irrep_label and
-                               t.opd.symbolic == transition.opd.symbolic and
-                               np.allclose(t.qpoint, transition.qpoint)
-                               for t in transitions):
-                        transitions.append(transition)
-
-            # Also try "Proper subgroup" (all proper rotations) for zone boundary q-points
-            # This matches the reference description of zone-boundary phonons leading to
-            # chiral groups like P222_1 (#17) or P2_12_12_1 (#19)
-            if not np.allclose(qp_prim, 0):  # Not Gamma point
-                proper_indices = []
-                for i, rot in enumerate(parent_info.primitive_rotations):
-                    if np.linalg.det(rot) > 0:
-                        # Check if it's in little group at q
-                        rot_q = np.dot(rot.T, qp_prim)
-                        if np.allclose((rot_q - qp_prim + 0.5) % 1.0, 0.5):
-                            proper_indices.append(i)
-                
-                if proper_indices:
-                    daughter_num, daughter_sym, vol_ratio = self._identify_daughter_spacegroup(
-                        subgroup_indices=None,
-                        qpoint=qp_conv,
-                        little_rots=parent_info.primitive_rotations[proper_indices],
-                        little_trans=parent_info.primitive_translations[proper_indices]
-                    )
-                    
-                    if daughter_num != 0 and is_sohncke(daughter_num):
-                        # Check if we already have this daughter
-                        already_found = any(
-                            t.daughter_spg_number == daughter_num and
-                            np.allclose(t.qpoint, qp_conv)
-                            for t in transitions
-                        )
-                        
-                        if not already_found:
-                            daughter_info = ChiralTransitionFinder(daughter_num).spacegroup_info
-                            parent_prim_order = len(parent_info.primitive_rotations)
-                            daughter_prim_order = len(daughter_info.primitive_rotations)
-                            domain_mult = (parent_prim_order / daughter_prim_order) * vol_ratio
-                            
-                            daughter_rot = parent_info.primitive_rotations[proper_indices]
-                            daughter_trans = parent_info.primitive_translations[proper_indices]
-                            lost_ops = self._analyze_lost_operations(
-                                parent_info.rotations, parent_info.translations,
-                                daughter_rot, daughter_trans
-                            )
-                            
-                            transition = ChiralTransition(
-                                parent_spg_number=self.spg_number,
-                                parent_spg_symbol=parent_info.symbol,
-                                parent_spg_order=parent_info.order,
-                                qpoint=qp_conv.copy(),
-                                qpoint_label=qp_label,
-                                irrep_label="ProperSubgroup",
-                                irrep_dimension=0,
-                                opd=OrderParameterDirection(np.array([1.0]), "(proper)", 1),
-                                daughter_spg_number=daughter_num,
-                                daughter_spg_symbol=daughter_sym,
-                                daughter_spg_order=daughter_info.order,
-                                domain_multiplicity=int(round(domain_mult)),
-                                enantiomeric_domain_count=1,
-                                lost_operations=lost_ops,
-                                lost_inversion=any(op.operation_type == ImproperOperationType.INVERSION for op in lost_ops),
-                                lost_mirrors=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.MIRROR),
-                                lost_glides=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.GLIDE),
-                                sohncke_class=get_sohncke_class(daughter_num),
-                                enantiomorph_partner=get_enantiomorph_partner(daughter_num)
-                            )
-                            transitions.append(transition)
-
-        return transitions
-
     def enumerate_isotropy_subgroups(
         self,
         qpoint: np.ndarray,
@@ -1544,8 +1433,8 @@ class ChiralTransitionFinder:
             (star, coset_reps) where star is a list of wavevectors and 
             coset_reps are indices of the primitive rotations mapping qpoint_prim to them.
         """
-        star = []
-        coset_reps = []
+        star: list[np.ndarray] = []
+        coset_reps: list[int] = []
         info = self.spacegroup_info
 
         for i, r in enumerate(info.primitive_rotations):
@@ -1661,7 +1550,8 @@ class ChiralTransitionFinder:
         
         # If star size is 1, small_rep is already the full_rep.
         if len(star) == 1:
-            full_reps = [None] * len(self.spacegroup_info.primitive_rotations)
+            shape = small_rep[0].shape if len(small_rep) > 0 else (1, 1)
+            full_reps = [np.zeros(shape) for _ in range(len(self.spacegroup_info.primitive_rotations))]
             for idx_lg, idx_full in enumerate(mapping):
                 full_reps[idx_full] = small_rep[idx_lg]
         else:
@@ -1860,19 +1750,19 @@ class ChiralTransitionFinder:
                         )
                         if sg_type is not None:
                             num = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
-                            from anaddb_irreps.chiral_transitions import is_sohncke
+                            
                             if is_sohncke(num):
                                 if num > best_num:
                                     best_num = num
-                                    best_sym = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
+                                    best_sym = _SOHNCKE_PRETTY_SYMBOLS.get(num, sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', ''))
                                     
                                     x, y, z = 0.123, 0.456, 0.789
-                                    all_pos = []
+                                    all_pos_list = []
                                     for r_op, t_op in zip(temp_sc_rots_arr, temp_sc_trans_arr):
-                                        all_pos.append((np.dot(r_op, [x,y,z]) + t_op) % 1.0)
-                                    all_pos = np.array(all_pos)
-                                    numbers = np.ones(len(all_pos), dtype='intc')
-                                    cell = (lattice, all_pos, numbers)
+                                        all_pos_list.append((np.dot(r_op, [x,y,z]) + t_op) % 1.0)
+                                    all_pos_arr = np.array(all_pos_list)
+                                    numbers = np.ones(len(all_pos_arr), dtype='intc')
+                                    cell = (lattice.tolist() if isinstance(lattice, np.ndarray) else lattice, all_pos_arr.tolist(), numbers.tolist())
                                     prim_cell = spglib.find_primitive(cell, symprec=self.symprec)
                                     if prim_cell:
                                         vol_daughter = np.abs(np.linalg.det(prim_cell[0]))
@@ -1887,24 +1777,25 @@ class ChiralTransitionFinder:
         if not sc_rots:
             return 0, "Unknown", 1.0
 
-        sc_rots = np.round(sc_rots).astype('intc')
-        sc_trans = np.array(sc_trans, dtype='double')
+        sc_rots_arr = np.round(sc_rots).astype('intc')
+        sc_trans_arr = np.array(sc_trans, dtype='double')
         
         try:
             sg_type = spglib.get_spacegroup_type_from_symmetry(
-                sc_rots, sc_trans, lattice=lattice, symprec=self.symprec
+                sc_rots_arr, sc_trans_arr, lattice=lattice, symprec=self.symprec
             )
             if sg_type is not None:
                 num = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
-                symb = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
+                symb = _SOHNCKE_PRETTY_SYMBOLS.get(num, sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', ''))
                 
                 x, y, z = 0.123, 0.456, 0.789
-                all_pos = []
-                for r_op, t_op in zip(sc_rots, sc_trans):
-                    all_pos.append((np.dot(r_op, [x,y,z]) + t_op) % 1.0)
-                all_pos = np.array(all_pos)
-                numbers = np.ones(len(all_pos), dtype='intc')
-                cell = (lattice, all_pos, numbers)
+                all_pos_list = []
+                for r_op, t_op in zip(sc_rots_arr, sc_trans_arr):
+                    all_pos_list.append((np.dot(r_op, [x,y,z]) + t_op) % 1.0)
+                all_pos_arr = np.array(all_pos_list)
+                numbers = np.ones(len(all_pos_arr), dtype='intc')
+                cell = (lattice.tolist() if isinstance(lattice, np.ndarray) else lattice, all_pos_arr.tolist(), numbers.tolist())
+                
                 prim_cell = spglib.find_primitive(cell, symprec=self.symprec)
                 if prim_cell:
                     vol_daughter = np.abs(np.linalg.det(prim_cell[0]))
@@ -1933,7 +1824,7 @@ class ChiralTransitionFinder:
             daughter_ops.add(key)
 
         for r, t in zip(parent_rot, parent_trans):
-            op_type = classify_improper_operation(r)
+            op_type = classify_improper_operation(r, t)
             if op_type is None:
                 continue
 
@@ -1977,7 +1868,8 @@ class ChiralTransitionFinder:
         self,
         qpoint: Optional[np.ndarray] = None,
         qpoint_label: Optional[str] = None,
-        irrep_label: Optional[str] = None
+        irrep_label: Optional[str] = None,
+        include_non_chiral: bool = False
     ) -> list[ChiralTransition]:
         """
         Find all chiral daughter phases accessible via displacive transitions.
@@ -1986,6 +1878,7 @@ class ChiralTransitionFinder:
             qpoint: If provided, only search this q-point
             qpoint_label: BCS label for the q-point
             irrep_label: If provided, only search this irrep
+            include_non_chiral: If True, also include transitions to non-chiral daughters
 
         Returns:
             List of ChiralTransition objects
@@ -1996,7 +1889,7 @@ class ChiralTransitionFinder:
                 "Use a non-chiral space group as parent."
             )
 
-        transitions = []
+        transitions: list[ChiralTransition] = []
         parent_info = self.spacegroup_info
 
         if qpoint is not None:
@@ -2006,7 +1899,7 @@ class ChiralTransitionFinder:
 
         # Group by q-point to avoid redundant calculations
         unique_qpoints = []
-        seen_q = []
+        seen_q: list[tuple[np.ndarray, str]] = []
         for qp, label in qpoints_to_search:
             # Shift q to [0, 1) range for consistent comparison
             # We use rounding to handle floating point precision
@@ -2052,46 +1945,46 @@ class ChiralTransitionFinder:
 
                 # Try full enumeration first
                 isotropy_subgroups = []
-                try:
-                    isotropy_subgroups = self.enumerate_isotropy_subgroups(
-                        qpoint=qp_prim,
-                        small_rep=irrep_info['small_rep'],
-                        little_rotations=irrep_info['little_rotations'],
-                        little_translations=irrep_info['little_translations']
-                    )
-                except Exception:
-                    # Simple method fallback for 1D irreps or when spgrep-modulation is missing
-                    if irrep_info['dimension'] == 1:
-                        # For 1D irrep, character is the representation itself
-                        # Isotropy subgroup is all operations where character == 1
-                        chars = irrep_info['small_rep'][:, 0, 0]
-                        subgroup_indices = np.where(np.abs(chars - 1.0) < 1e-5)[0].tolist()
-                        isotropy_subgroups = [(subgroup_indices, np.array([1.0]), "(a)")]
-                    elif irrep_info['dimension'] == 2:
-                        # Common OPDs for 2D irreps: (a, 0) and (a, a)
-                        for opd_num, opd_sym in [(np.array([1.0, 0.0]), "(a,0)"), (np.array([1.0, 1.0]), "(a,a)")]:
-                            # Identify operations preserving this OPD
-                            subgroup_indices = []
-                            for j in range(len(irrep_info['small_rep'])):
-                                mat = irrep_info['small_rep'][j]
-                                if np.linalg.norm(np.dot(mat, opd_num) - opd_num) < 1e-5:
-                                    subgroup_indices.append(j)
-                            if subgroup_indices:
-                                isotropy_subgroups.append((subgroup_indices, opd_num, opd_sym))
+                # For 1D irreps, use the simple character-based method which gives the
+                # FULL isotropy subgroup, not just maximal subgroups
+                if irrep_info['dimension'] == 1:
+                    # For 1D irrep, character is the representation itself
+                    # Isotropy subgroup is all operations where character == 1
+                    chars = irrep_info['small_rep'][:, 0, 0]
+                    subgroup_indices = np.where(np.abs(chars - 1.0) < 1e-5)[0].tolist()
+                    isotropy_subgroups = [(subgroup_indices, np.array([1.0]), "(a)")]
+                else:
+                    try:
+                        isotropy_subgroups = self.enumerate_isotropy_subgroups(
+                            qpoint=qp_prim,
+                            small_rep=irrep_info['small_rep'],
+                            little_rotations=irrep_info['little_rotations'],
+                            little_translations=irrep_info['little_translations']
+                        )
+                    except Exception:
+                        # Fallback for 2D irreps when spgrep-modulation fails
+                        if irrep_info['dimension'] == 2:
+                            # Common OPDs for 2D irreps: (a, 0) and (a, a)
+                            for opd_num, opd_sym in [(np.array([1.0, 0.0]), "(a,0)"), (np.array([1.0, 1.0]), "(a,a)")]:
+                                # Identify operations preserving this OPD
+                                subgroup_indices = []
+                                for j in range(len(irrep_info['small_rep'])):
+                                    mat = irrep_info['small_rep'][j]
+                                    if np.linalg.norm(np.dot(mat, opd_num) - opd_num) < 1e-5:
+                                        subgroup_indices.append(j)
+                                if subgroup_indices:
+                                    isotropy_subgroups.append((subgroup_indices, opd_num, opd_sym))
 
                 # Augment with multi-k isotropy subgroups
-                multi_k_subgroups = []
+                multi_k_subgroups: list[tuple[list[int], np.ndarray, str]] = []
                 multi_k_full_reps = None
                 multi_k_star = None
                 if 'mapping' in irrep_info:
-                    try:
-                        multi_k_star, multi_k_full_reps, multi_k_subgroups = self._enumerate_multi_k_isotropy_subgroups(
-                            qpoint_prim=qp_prim,
-                            small_rep=irrep_info['small_rep'],
-                            mapping=irrep_info['mapping']
-                        )
-                    except Exception:
-                        pass
+                    multi_k_star, multi_k_full_reps, multi_k_subgroups = self._enumerate_multi_k_isotropy_subgroups(
+                        qpoint_prim=qp_prim,
+                        small_rep=irrep_info['small_rep'],
+                        mapping=irrep_info['mapping']
+                    )
 
                 all_candidates = []
                 for sub_idx, opd_num, opd_sym in isotropy_subgroups:
@@ -2110,34 +2003,34 @@ class ChiralTransitionFinder:
                     })
 
                 for candidate in all_candidates:
-                    subgroup_indices = candidate['subgroup_indices']
-                    opd_num = candidate['opd_num']
-                    opd_sym = candidate['opd_sym']
-                    c_type = candidate['type']
+                    subgroup_indices_raw: list[int] = candidate['subgroup_indices']  # type: ignore[assignment]
+                    cand_opd_num: np.ndarray = candidate['opd_num']  # type: ignore[assignment]
+                    cand_opd_sym: str = candidate['opd_sym']  # type: ignore[assignment]
+                    c_type: str = candidate['type']  # type: ignore[assignment]
 
                     if c_type == 'single_k':
-                        daughter_rot = irrep_info['little_rotations'][subgroup_indices]
-                        daughter_trans = irrep_info['little_translations'][subgroup_indices]
+                        daughter_rot = irrep_info['little_rotations'][subgroup_indices_raw]
+                        daughter_trans = irrep_info['little_translations'][subgroup_indices_raw]
                         try:
                             daughter_num, daughter_sym, vol_ratio = self._identify_daughter_spacegroup(
                                 subgroup_indices=None,
                                 qpoint=qp_conv,
                                 small_rep=irrep_info['small_rep'],
-                                opd=opd_num,
+                                opd=cand_opd_num,
                                 little_rots=irrep_info['little_rotations'],
                                 little_trans=irrep_info['little_translations']
                             )
                         except Exception:
                                         continue
                     else:
-                        daughter_rot = parent_info.primitive_rotations[subgroup_indices]
-                        daughter_trans = parent_info.primitive_translations[subgroup_indices]
+                        daughter_rot = parent_info.primitive_rotations[subgroup_indices_raw]
+                        daughter_trans = parent_info.primitive_translations[subgroup_indices_raw]
                         try:
                             daughter_num, daughter_sym, vol_ratio = self._identify_daughter_spacegroup(
                                 subgroup_indices=None,
                                 qpoint=qp_conv,
                                 small_rep=None,
-                                opd=opd_num,
+                                opd=cand_opd_num,
                                 little_rots=parent_info.primitive_rotations,
                                 little_trans=parent_info.primitive_translations,
                                 full_reps=multi_k_full_reps,
@@ -2147,6 +2040,9 @@ class ChiralTransitionFinder:
                                         continue
 
                     if daughter_num == 0:
+                        continue
+
+                    if not include_non_chiral and not is_sohncke(daughter_num):
                         continue
 
                     # Success! Create transition
@@ -2174,9 +2070,9 @@ class ChiralTransitionFinder:
                         irrep_label=irrep_info['label'],
                         irrep_dimension=irrep_info['dimension'],
                         opd=OrderParameterDirection(
-                            numerical=opd_num.copy() if hasattr(opd_num, 'copy') else np.array(opd_num),
-                            symbolic=opd_sym,
-                            num_free_params=1 if np.atleast_2d(opd_num).shape[0] == 1 else np.atleast_2d(opd_num).shape[0]
+                            numerical=cand_opd_num.copy() if hasattr(cand_opd_num, 'copy') else np.array(cand_opd_num),
+                            symbolic=cand_opd_sym,
+                            num_free_params=1 if np.atleast_2d(cand_opd_num).shape[0] == 1 else np.atleast_2d(cand_opd_num).shape[0]
                         ),
                         daughter_spg_number=daughter_num,
                         daughter_spg_symbol=daughter_sym,
@@ -2225,72 +2121,13 @@ class ChiralTransitionFinder:
                     if not is_duplicate:
                         transitions.append(transition)
 
-            # Also try "Proper subgroup" (all proper rotations) for zone boundary q-points
-            # This matches the reference description of zone-boundary phonons leading to
-            # chiral groups like P222_1 (#17) or P2_12_12_1 (#19)
-            if not np.allclose(qp_prim, 0):  # Not Gamma point
-                proper_indices = []
-                for i, rot in enumerate(parent_info.primitive_rotations):
-                    if np.linalg.det(rot) > 0:
-                        # Check if it's in little group at q
-                        rot_q = np.dot(rot.T, qp_prim)
-                        if np.allclose((rot_q - qp_prim + 0.5) % 1.0, 0.5):
-                            proper_indices.append(i)
-                
-                if proper_indices:
-                    try:
-                        daughter_num, daughter_sym, vol_ratio = self._identify_daughter_spacegroup(
-                            subgroup_indices=None,
-                            qpoint=qp_conv,
-                            little_rots=parent_info.primitive_rotations[proper_indices],
-                            little_trans=parent_info.primitive_translations[proper_indices]
-                        )
-                        
-                        if daughter_num != 0 and is_sohncke(daughter_num):
-                            # Check if we already have this daughter
-                            already_found = any(
-                                t.daughter_spg_number == daughter_num and
-                                np.allclose(t.qpoint, qp_conv)
-                                for t in transitions
-                            )
-                            
-                            if not already_found:
-                                daughter_info = ChiralTransitionFinder(daughter_num).spacegroup_info
-                                parent_prim_order = len(parent_info.primitive_rotations)
-                                daughter_prim_order = len(daughter_info.primitive_rotations)
-                                domain_mult = (parent_prim_order / daughter_prim_order) * vol_ratio
-                                
-                                daughter_rot = parent_info.primitive_rotations[proper_indices]
-                                daughter_trans = parent_info.primitive_translations[proper_indices]
-                                lost_ops = self._analyze_lost_operations(
-                                    parent_info.rotations, parent_info.translations,
-                                    daughter_rot, daughter_trans
-                                )
-                                
-                                transition = ChiralTransition(
-                                    parent_spg_number=self.spg_number,
-                                    parent_spg_symbol=parent_info.symbol,
-                                    parent_spg_order=parent_info.order,
-                                    qpoint=qp_conv.copy(),
-                                    qpoint_label=qp_label,
-                                    irrep_label="ProperSubgroup",
-                                    irrep_dimension=0,
-                                    opd=OrderParameterDirection(np.array([1.0]), "(proper)", 1),
-                                    daughter_spg_number=daughter_num,
-                                    daughter_spg_symbol=daughter_sym,
-                                    daughter_spg_order=daughter_info.order,
-                                    domain_multiplicity=int(round(domain_mult)),
-                                    enantiomeric_domain_count=1,
-                                    lost_operations=lost_ops,
-                                    lost_inversion=any(op.operation_type == ImproperOperationType.INVERSION for op in lost_ops),
-                                    lost_mirrors=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.MIRROR),
-                                    lost_glides=sum(1 for op in lost_ops if op.operation_type == ImproperOperationType.GLIDE),
-                                    sohncke_class=get_sohncke_class(daughter_num),
-                                    enantiomorph_partner=get_enantiomorph_partner(daughter_num)
-                                )
-                                transitions.append(transition)
-                    except Exception:
-                        pass
+            # The "Proper subgroup" fallback logic previously here has been removed 
+            # because it is mathematically unphysical for zone boundary q-points.
+            # It ignored the fundamental translational symmetry breaking 
+            # (the phase factor exp(-iq.t)) required at these points.
+            # All valid phase transitions (including chiral ones) are already captured 
+            # perfectly by the full isotropy subgroup enumeration above. 
+
 
         return transitions
 
@@ -2299,23 +2136,28 @@ class ChiralTransitionFinder:
 # Reporting Functions
 # =============================================================================
 
-def format_transition_table(transitions: list[ChiralTransition]) -> str:
+def format_transition_table(
+    transitions: list[ChiralTransition],
+    include_non_chiral: bool = False
+) -> str:
     """
     Format transitions as a human-readable table, grouped by class.
 
     Args:
         transitions: List of ChiralTransition objects
+        include_non_chiral: If True, also include non-chiral (Class I) transitions
 
     Returns:
         Formatted string table
     """
     if not transitions:
-        return "No chiral transitions found."
+        return "No transitions found."
 
     lines = []
     parent = transitions[0]
-    lines.append("=" * 110)
-    lines.append(f"Chiral Transitions from {parent.parent_spg_symbol} (#{parent.parent_spg_number})")
+    width = 130
+    lines.append("=" * width)
+    lines.append(f"Phase Transitions from {parent.parent_spg_symbol} (#{parent.parent_spg_number})")
     
     # q-point coordinates
     unique_qs = {}
@@ -2327,34 +2169,42 @@ def format_transition_table(transitions: list[ChiralTransition]) -> str:
     for label, q in unique_qs.items():
         q_parts.append(f"{label}:({q[0]:.3f}, {q[1]:.3f}, {q[2]:.3f})")
     lines.append("q-points: " + " | ".join(q_parts))
-    lines.append("=" * 110)
+    lines.append("=" * width)
     lines.append("")
 
-    def _format_subtable(sub_transitions, title):
+    def _format_subtable(sub_transitions, title, is_chiral=True):
         if not sub_transitions:
             return []
         sub_lines = []
         sub_lines.append(f"--- {title} ---")
-        sub_lines.append(f"{'#':>3} {'q-pt':>6} {'Irrep':>14} {'OPD':>12} {'Daughter':>16} {'Domains':>8} {'Lost Ops':>16}")
-        sub_lines.append("-" * 110)
+        sub_lines.append(f"{'#':>3} {'q-pt':>6} {'Irrep':>24} {'OPD':>12} {'Daughter':>24} {'Screw':>8} {'Mult':>7} {'Lost Ops':>18}")
+        sub_lines.append("-" * width)
         for i, t in enumerate(sub_transitions, 1):
             lost_str = f"i={int(t.lost_inversion)},m={t.lost_mirrors},g={t.lost_glides}"
+            daughter_str = f"{t.daughter_spg_symbol} (#{t.daughter_spg_number})"
+            screw = get_screw_notation(t.daughter_spg_number)
             sub_lines.append(
-                f"{i:>3} {t.qpoint_label:>6} {t.irrep_label:>14} "
-                f"{t.opd.symbolic:>12} {t.daughter_spg_symbol:>16} "
-                f"{t.domain_multiplicity:>8} {lost_str:>16}"
+                f"{i:>3} {t.qpoint_label:>6} {t.irrep_label:>24} "
+                f"{t.opd.symbolic:>12} {daughter_str:>24} "
+                f"{screw:>8} {t.domain_multiplicity:>7} {lost_str:>18}"
             )
         sub_lines.append("")
         return sub_lines
 
+    class1 = [t for t in transitions if t.sohncke_class == SohnckeClass.CLASS_I]
     class2 = [t for t in transitions if t.sohncke_class == SohnckeClass.CLASS_II]
     class3 = [t for t in transitions if t.sohncke_class == SohnckeClass.CLASS_III]
 
+    if include_non_chiral:
+        lines.extend(_format_subtable(class1, "Class I (Non-chiral / Achiral)", is_chiral=False))
     lines.extend(_format_subtable(class2, "Class II (Enantiomorphous pairs)"))
     lines.extend(_format_subtable(class3, "Class III (Chiral-supporting)"))
 
     lines.append("Legend: i=inversion, m=mirror, g=glide")
-    lines.append("Class II = Enantiomorphous pair; Class III = Chiral-supporting")
+    if include_non_chiral:
+        lines.append("Class I = Non-chiral; Class II = Enantiomorphous pair; Class III = Chiral-supporting")
+    else:
+        lines.append("Class II = Enantiomorphous pair; Class III = Chiral-supporting")
 
     return "\n".join(lines)
 

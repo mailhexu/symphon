@@ -50,13 +50,15 @@ def print_parent_info(finder: ChiralTransitionFinder) -> None:
     print(f"Is centrosymmetric: {info.has_inversion()}")
     print(f"Sohncke class: {get_sohncke_class(info.number).value}")
     print()
+    print("Symmetry Operations:")
+    print(info.get_operations_report())
+    print()
 
 
 def print_transitions(
     finder: ChiralTransitionFinder,
     daughter_filter: Optional[int] = None,
     verbose: bool = False,
-    full_method: bool = False,
 ) -> int:
     """
     Find and print chiral transitions.
@@ -65,16 +67,13 @@ def print_transitions(
         Number of transitions found
     """
     try:
-        if full_method:
-            from anaddb_irreps.chiral_transitions import HAS_SPGREP
-            if HAS_SPGREP:
-                print("Using full isotropy subgroup enumeration (slow mode)...")
-                transitions = finder.find_chiral_transitions()
-            else:
-                print("Warning: spgrep not available. Falling back to simple method.", file=sys.stderr)
-                transitions = finder.find_chiral_transitions_simple()
-        else:
-            transitions = finder.find_chiral_transitions_simple()
+        from anaddb_irreps.chiral_transitions import HAS_SPGREP, HAS_SPGREP_MODULATION
+        if not HAS_SPGREP or not HAS_SPGREP_MODULATION:
+            print("Error: 'spgrep' and 'spgrep-modulation' are required for chiral transition analysis.", file=sys.stderr)
+            print("Install them with: pip install spgrep spgrep-modulation", file=sys.stderr)
+            return 0
+            
+        transitions = finder.find_chiral_transitions()
     except Exception as e:
         print(f"Error finding transitions: {e}", file=sys.stderr)
         return 0
@@ -106,14 +105,11 @@ def print_transitions(
     return len(transitions)
 
 
-def print_summary_for_all(use_cache: bool = True, refresh: bool = False, full: bool = False) -> None:
+def print_summary_for_all(use_cache: bool = True, refresh: bool = False) -> None:
     """Print summary table for all non-Sohncke space groups."""
     print("=" * 100)
     print("Chiral Transitions Summary - All Non-Sohncke Space Groups")
-    if full:
-        print("(Full mode: enumerating all isotropy subgroups)")
-    else:
-        print("(Standard mode: using 1D irreps and simple OPDs)")
+    print("(Method: enumerating all isotropy subgroups)")
     print("=" * 100)
     print()
     
@@ -156,14 +152,13 @@ def print_summary_for_all(use_cache: bool = True, refresh: bool = False, full: b
         try:
             finder = ChiralTransitionFinder(spg_num)
             
-            if full:
-                from anaddb_irreps.chiral_transitions import HAS_SPGREP
-                if HAS_SPGREP:
-                    transitions = finder.find_chiral_transitions()
-                else:
-                    transitions = finder.find_chiral_transitions_simple()
+            from anaddb_irreps.chiral_transitions import HAS_SPGREP
+            if HAS_SPGREP:
+                transitions = finder.find_chiral_transitions()
             else:
-                transitions = finder.find_chiral_transitions_simple()
+                # Should not happen if dependencies are checked earlier, 
+                # but we can't easily exit here without breaking the loop
+                continue
             
             if not transitions:
                 continue
@@ -274,12 +269,6 @@ Examples:
         help="Force refresh the cache for --all",
     )
     
-    parser.add_argument(
-        "--slow",
-        action="store_true",
-        help="Use slow full computation for --all (default: fast mode)",
-    )
-    
     args = parser.parse_args()
     
     if args.no_cache:
@@ -305,7 +294,6 @@ def main_inner(args, parser):
         print_summary_for_all(
             use_cache=args.cache, 
             refresh=args.refresh_cache,
-            full=args.slow
         )
         return
     
@@ -364,7 +352,6 @@ def main_inner(args, parser):
             finder, 
             daughter_filter=args.daughter, 
             verbose=args.verbose,
-            full_method=args.slow
         )
         return
     

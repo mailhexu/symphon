@@ -169,7 +169,7 @@ class ReportingMixin:
             self._chiral_transitions_map = {}
             return
 
-        # Use find_chiral_transitions_simple which is faster and doesn't require spgrep-modulation
+        # Use find_chiral_transitions which is comprehensive
         try:
             finder = ChiralTransitionFinder(spg_number, symprec=self._symprec)
             
@@ -179,7 +179,7 @@ class ReportingMixin:
             # We don't have a reliable BCS label here, so we let it search or use "current"
             # If kpname was provided during run(), we might have it stored.
             kpname = getattr(self, "_bcs_kpname", None)
-            transitions = finder.find_chiral_transitions_simple(qpoint=q, qpoint_label=kpname)
+            transitions = finder.find_chiral_transitions(qpoint=q, qpoint_label=kpname)
             
             # Group transitions by irrep label
             mapping = {}
