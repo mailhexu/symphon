@@ -55,14 +55,16 @@ IrRepsPhonopy(
 Both `IrRepsAnaddb` and `IrRepsPhonopy` inherit from `IrRepsEigen`, which provides extensive query functionalities for the computed modes at the specified q-point:
 
 - `get_spacegroup() -> str`: Get the parent structure space group symbol.
-- `get_frequencies()`: Return mode frequencies in THz.
-- `get_eigenvalues()`: Return mode eigenvalues (omega^2).
+- `get_frequencies(unit: str = "THz")`: Return mode frequencies in specified unit (`"THz"`, `"eV"`, `"meV"`, `"cm-1"`).
+- `get_eigenvalues(unit: str = "THz")`: Return mode eigenvalues (signed omega^2) in specified unit.
 - `get_eigenvectors()`: Return mode eigenvectors.
 - `get_eigendisplacements()`: Return mass-weighted eigendisplacements.
 - `is_ir_active(mode_index: int) -> bool`: Check if mode is IR active (Gamma only).
 - `is_raman_active(mode_index: int) -> bool`: Check if mode is Raman active (Gamma only).
-- `get_bcs_label(mode_index: int) -> str`: Get the Bilbao Crystallographic Server label.
-- `get_mulliken_label(mode_index: int) -> str`: Get the Mulliken label (Gamma only).
+- `get_bcs_labels() -> list[str | None]`: Get the Bilbao Crystallographic Server labels for all modes.
+- `get_mulliken_labels() -> list[str | None]`: Get the Mulliken labels for all modes (Gamma only).
+- `get_bcs_label(mode_index: int) -> str | None`: Get the Bilbao Crystallographic Server label for a specific mode.
+- `get_mulliken_label(mode_index: int) -> str | None`: Get the Mulliken label for a specific mode (Gamma only).
 - `get_ir_indices() -> list[int]`: Return indices of all IR active modes.
 - `get_raman_indices() -> list[int]`: Return indices of all Raman active modes.
 - `get_indices_by_mulliken(label: str) -> list[int]`: Return mode indices matching a given Mulliken label.
@@ -96,6 +98,48 @@ def print_irreps_phonopy(
 )
 ```
 Quickly prints the calculated irreps directly to the standard output using a Phonopy object.
+
+---
+
+### Example Usage
+
+Here is a quick example of how to use the single-qpoint and multi-qpoint querying functionalities with the `IrRepsPhonopy` interface:
+
+```python
+from anaddb_irreps.irreps_anaddb import IrRepsPhonopy, get_all_irreps_phonopy
+
+# 1. Single Q-Point Analysis (Gamma point)
+qpoint_gamma = [0.0, 0.0, 0.0]
+irr_gamma = IrRepsPhonopy("BaTiO3_phonopy_params.yaml", qpoint_gamma)
+
+# Compute the irreps
+irr_gamma.run(kpname="GM")
+
+# Access parent space group
+print("Spacegroup:", irr_gamma.get_spacegroup())
+
+# Fetch full lists of labels for all modes
+mulliken_labels = irr_gamma.get_mulliken_labels()
+bcs_labels = irr_gamma.get_bcs_labels()
+
+# Check specific mode properties (e.g., Mode index 0)
+print("Mode 0 Mulliken Label:", irr_gamma.get_mulliken_label(0))
+print("Mode 0 BCS Label:", irr_gamma.get_bcs_label(0))
+print("Is Mode 0 IR Active?", irr_gamma.is_ir_active(0))
+
+# Find modes with a specific label
+coords, kpname, indices = irr_gamma.get_indices_by_bcs("GM4-")
+print(f"Modes with 'GM4-' at {kpname} ({coords}): {indices}")
+
+# 2. Multi Q-Point Analysis (All special q-points automatically)
+print("\n--- Special Q-points ---")
+all_irreps = get_all_irreps_phonopy("BaTiO3_phonopy_params.yaml")
+for q_label, irr in all_irreps.items():
+    print(f"Q-point: {q_label}")
+    print(f"  Frequencies (THz): {irr.get_frequencies()[:3]}...") # First 3 modes
+    print(f"  Frequencies (cm-1): {irr.get_frequencies('cm-1')[:3]}...")
+    print(f"  BCS Labels: {irr.get_bcs_labels()[:3]}...")
+```
 
 ---
 

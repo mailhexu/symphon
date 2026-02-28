@@ -1,5 +1,5 @@
 import numpy as np
-from ase import Atoms
+from scipy.constants import c, h, e, tera
 from phonopy.phonon.irreps import IrReps, IrRepLabels
 from phonopy.structure.symmetry import Symmetry
 from phonopy.phonon.character_table import character_table
@@ -33,7 +33,7 @@ class ReportingMixin:
         q = tuple(float(x) for x in self._qpoint)
 
         freqs_thz = self._freqs
-        conv = 33.35641  # 1 THz -> cm^-1
+        conv = tera / (c * 100)  # THz -> cm^-1
         n_modes = len(freqs_thz)
 
         irreps = getattr(self, "_irreps", None)
@@ -392,23 +392,27 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             self._pointgroup_symbol in character_table.keys()
             and character_table[self._pointgroup_symbol] is not None
         ):
-            self._rotation_symbols, character_table_of_ptg = self._get_rotation_symbols(self._pointgroup_symbol)
-            self._character_table = character_table_of_ptg
-
-            if self._rotation_symbols:
-                self._ir_labels = self._get_irrep_labels(character_table_of_ptg)
-                if (abs(self._qpoint) < self._symprec).all():
-                    self._RamanIR_labels = self._get_infrared_raman()
-                    IR_labels, Ram_labels = self._RamanIR_labels
+            try:
+                self._rotation_symbols, character_table_of_ptg = self._get_rotation_symbols(self._pointgroup_symbol)
+                self._character_table = character_table_of_ptg
+                if self._rotation_symbols:
+                    self._ir_labels = self._get_irrep_labels(character_table_of_ptg)
+                    if (abs(self._qpoint) < self._symprec).all():
+                        self._RamanIR_labels = self._get_infrared_raman()
+                        IR_labels, Ram_labels = self._RamanIR_labels
+                        if self._log_level > 0:
+                            print("IR  labels", IR_labels)
+                            print("Ram labels", Ram_labels)
+                elif (abs(self._qpoint) < self._symprec).all():
                     if self._log_level > 0:
-                        print("IR  labels", IR_labels)
-                        print("Ram labels", Ram_labels)
-            elif (abs(self._qpoint) < self._symprec).all():
+                        print("Database for this point group is not preprared.")
+                else:
+                    if self._log_level > 0:
+                        print(f"Database for point group {self._pointgroup_symbol} at non-Gamma point is not prepared.")
+            except Exception as e:
+                self._rotation_symbols = None
                 if self._log_level > 0:
-                    print("Database for this point group is not preprared.")
-            else:
-                if self._log_level > 0:
-                    print(f"Database for point group {self._pointgroup_symbol} at non-Gamma point is not prepared.")
+                    print(f"Could not determine rotation symbols for {self._pointgroup_symbol} at {self._qpoint}: {e}")
         else:
             self._rotation_symbols = None
             if self._log_level > 0:
@@ -451,19 +455,33 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         """Get the space group symbol of the parent structure."""
         return getattr(self, "_spacegroup_symbol", None)
         
-    def get_frequencies(self):
-        """Return the frequencies in THz for the q-point."""
-        return self._freqs
+    def get_frequencies(self, unit: str = "THz"):
+        """
+        Return the frequencies for the q-point in the specified unit.
+        Supported units: "THz", "eV", "meV", "cm-1".
+        """
+        unit = unit.lower()
+        if unit == "thz":
+            return self._freqs
+        elif unit == "cm-1":
+            # THz to cm^-1: 1 THz = 10^12 Hz. Wavenumber = f / c. In cm^-1 it is f / (c * 100)
+            return self._freqs * tera / (c * 100)
+        elif unit == "ev":
+            # THz to eV: E = h * f. In eV it is h * f / e
+            return self._freqs * tera * h / e
+        elif unit == "mev":
+            # THz to meV
+            return self._freqs * tera * h / e * 1000
+        else:
+            raise ValueError(f"Unsupported unit: {unit}. Use 'THz', 'eV', 'meV', or 'cm-1'.")
 
-    def get_eigenvalues(self):
-        """Return the eigenvalues (omega^2) for the q-point."""
-        conv = 15.633302 * 1000 # THz to cm-1 roughly? Wait, what units?
-        # Actually in phonopy eigenvalues are (2pi * freq)^2 with unit conversions. 
-        # But we can just return what phonopy uses or simply freq * abs(freq) with some factor.
-        # Actually, let's just return (freq * 2 * pi)^2 roughly, or just self._freqs**2 * sign.
-        # Better: just return freq ** 2 * sign(freq).
-        freqs = self._freqs
-        return np.sign(freqs) * freqs**2
+    def get_eigenvalues(self, unit: str = "THz"):
+        """
+        Return the eigenvalues (signed omega^2) for the q-point based on the specified unit.
+        Supported units for omega: "THz", "eV", "meV", "cm-1".
+        """
+        freqs = self.get_frequencies(unit=unit)
+        return np.sign(freqs) * (freqs ** 2)
 
     def get_eigenvectors(self):
         """Return the eigenvectors for the q-point."""
@@ -492,7 +510,8 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         # Helper to unpack degenerate labels
         raw_labels = [None] * len(self._freqs)
         seq = getattr(self, label_attr, None)
-        if seq is None: return raw_labels
+        if seq is None:
+            return raw_labels
         
         mode_to_degset = {}
         if self._degenerate_sets is not None:
@@ -510,16 +529,25 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
                     raw_labels[band_index] = cand
         return raw_labels
 
+    def get_mulliken_labels(self) -> list[str | None]:
+        """Get the Mulliken labels for all modes (only for Gamma point)."""
+        return self._get_labels_list("_ir_labels")
+
+    def get_bcs_labels(self) -> list[str | None]:
+        """Get the BCS labels for all modes."""
+        if not hasattr(self, "_irrep_labels_bcs") or not self._irrep_labels_bcs:
+            return [None] * len(self._freqs)
+        return self._irrep_labels_bcs
+
     def get_mulliken_label(self, mode_index: int) -> str | None:
         """Get the Mulliken label for a specific mode (only for Gamma point)."""
-        labels = self._get_labels_list("_ir_labels")
+        labels = self.get_mulliken_labels()
         return labels[mode_index] if mode_index < len(labels) else None
 
     def get_bcs_label(self, mode_index: int) -> str | None:
         """Get the BCS label for a specific mode."""
-        if not hasattr(self, "_irrep_labels_bcs") or not self._irrep_labels_bcs:
-            return None
-        return self._irrep_labels_bcs[mode_index]
+        labels = self.get_bcs_labels()
+        return labels[mode_index] if mode_index < len(labels) else None
 
     def is_ir_active(self, mode_index: int) -> bool:
         """Check if a specific mode is IR active (only for Gamma point)."""
@@ -761,7 +789,6 @@ def get_special_qpoints(primitive_atoms, symprec=1e-5) -> list[dict]:
         - qpoint_input: The q-point coordinates in the input cell's reciprocal basis
     """
     try:
-        from irrep.spacegroup import SpaceGroup
         try:
             from irreptables.irreps import IrrepTable
         except ImportError:
@@ -770,12 +797,19 @@ def get_special_qpoints(primitive_atoms, symprec=1e-5) -> list[dict]:
         raise ImportError("The 'irrep' package is required to get special q-points.")
 
     # Initialize SpaceGroup which computes refUC (transformation to standard BCS cell)
-    sg = SpaceGroup(
-        lattice=primitive_atoms.cell,
-        positions=primitive_atoms.scaled_positions,
-        types=primitive_atoms.numbers,
+    try:
+        from irrep.spacegroup import SpaceGroup as SpaceGroupIrreps
+    except ImportError:
+        pass
+    
+    cell = (primitive_atoms.cell, primitive_atoms.scaled_positions, primitive_atoms.numbers)
+    sg = SpaceGroupIrreps.from_cell(
+        cell=cell,
+        spinor=False,
+        include_TR=False,
+        search_cell=True,
         symprec=symprec,
-        spinor=False
+        verbosity=0
     )
     
     table = IrrepTable(sg.number_str, spinor=False)
