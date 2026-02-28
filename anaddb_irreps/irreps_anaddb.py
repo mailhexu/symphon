@@ -116,14 +116,14 @@ class ReportingMixin:
             opd_str = "-"
             daughter_str = "-"
             
-            # Check both primary label and BCS label (if available in both_labels mode)
+            # Check both primary label and BCS label
             labels_to_check = []
             if label:
                 labels_to_check.append(label)
             
-            irrep_labels_both = getattr(self, "_irrep_labels_both", None)
-            if irrep_labels_both and band_index < len(irrep_labels_both):
-                label_bcs = irrep_labels_both[band_index]
+            irrep_labels_bcs = getattr(self, "_irrep_labels_bcs", None)
+            if irrep_labels_bcs and band_index < len(irrep_labels_bcs):
+                label_bcs = irrep_labels_bcs[band_index]
                 if label_bcs and label_bcs not in labels_to_check:
                     labels_to_check.append(label_bcs)
 
@@ -206,12 +206,8 @@ class ReportingMixin:
         summary = self.get_summary_table()
         show_chiral = any(row.get("opd") != "-" or row.get("daughter_sg") != "-" for row in summary)
 
-        # Only show activity columns if we have activity data (supported by backend)
-        backend = getattr(self, "_backend", "phonopy")
-        show_activity = backend == "phonopy"
-        
-        # For both_labels mode, show extra BCS label column
-        show_both = getattr(self, "_both_labels", False) and getattr(self, "_irrep_labels_both", None) is not None
+        show_activity = True
+        show_both = getattr(self, "_irrep_labels_bcs", None) is not None
 
         lines = []
         if include_symmetry:
@@ -257,11 +253,11 @@ class ReportingMixin:
             
             if show_both:
                 # Get both labels: phonopy (Mulliken) and irrep (BCS)
-                irrep_labels_both = getattr(self, "_irrep_labels_both", None)
+                irrep_labels_bcs = getattr(self, "_irrep_labels_bcs", None)
                 label_mulliken = label if label else "-"
                 label_bcs = "-"
-                if irrep_labels_both and i < len(irrep_labels_both):
-                    label_bcs = irrep_labels_both[i] or "-"
+                if irrep_labels_bcs and i < len(irrep_labels_bcs):
+                    label_bcs = irrep_labels_bcs[i] or "-"
                 
                 if show_activity:
                     ir_flag = "Y" if row["is_ir_active"] else "."
@@ -318,10 +314,7 @@ class ReportingMixin:
         return "\n".join(lines)
 
     def get_verbose_output(self) -> str:
-        """Get verbose phonopy-style output (only for phonopy backend)."""
-        backend = getattr(self, "_backend", "phonopy")
-        if backend != "phonopy":
-            return f"# Verbose output not supported for '{backend}' backend.\n"
+        """Get verbose phonopy-style output."""
 
         from io import StringIO
         import contextlib
@@ -345,14 +338,11 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         qpoint,
         freqs,
         eigvecs,
-        is_little_cogroup: bool = False,
         symprec: float = 1e-5,
         degeneracy_tolerance: float = 1e-5,
         log_level: int = 0,
-        backend: str = "phonopy",
-        both_labels: bool = False,
     ) -> None:
-        self._is_little_cogroup = is_little_cogroup
+        self._is_little_cogroup = True  # Always use little_cogroup
         self._log_level = log_level
 
         self._qpoint = np.array(qpoint)
@@ -362,46 +352,14 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         self._freqs, self._eig_vecs = freqs, eigvecs
         self._character_table = None
         self._verbose = False
-        self._backend = backend.lower()
-        self._backend_obj = None
-        self._both_labels = both_labels
-        self._irrep_labels_both = None
+        self._irrep_labels_bcs = None
         self._irrep_backend_obj = None
         self._chiral_transitions_map = {}
         self._spacegroup_number = None
 
     def run(self, kpname=None) -> bool:
-        if self._backend == "irrep":
-            # Special case: at Gamma with both_labels=True, use phonopy backend 
-            # which will automatically also run irrep backend for dual display
-            is_gamma = (abs(self._qpoint) < self._symprec).all()
-            if self._both_labels and is_gamma:
-                # Switch to phonopy backend temporarily - it will handle both_labels
-                self._backend = "phonopy"
-                return self.run(kpname=kpname)
-            
-            # Normal irrep backend path (non-Gamma or no both_labels)
-            from .irrep_backend import IrRepsIrrep
-            self._backend_obj = IrRepsIrrep(
-                primitive=self._primitive,
-                qpoint=self._qpoint,
-                freqs=self._freqs,
-                eigvecs=self._eig_vecs,
-                symprec=self._symprec,
-                log_level=self._log_level
-            )
-            res = self._backend_obj.run(kpname=kpname)
-            # Sync attributes for ReportingMixin
-            self._irreps = self._backend_obj._irreps
-            self._degenerate_sets = self._backend_obj._degenerate_sets
-            self._pointgroup_symbol = self._backend_obj._pointgroup_symbol
-            self._spacegroup_symbol = self._backend_obj._spacegroup_symbol
-            self._spacegroup_number = getattr(self._backend_obj, "_spacegroup_number", None)
-            
-            self._compute_chiral_transitions()
-            return res
-
-        # Existing phonopy logic
+        self._bcs_kpname = kpname
+        # 1. Phonopy logic (for Mulliken labels, IR/Raman, and general setup)
         self._symmetry_dataset = Symmetry(self._primitive, symprec=self._symprec).dataset
         if not is_primitive_cell(self._symmetry_dataset.rotations):
             raise RuntimeError(
@@ -428,6 +386,7 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         self._characters, self._irrep_dims = self._get_characters()
 
         self._ir_labels = None
+        self._RamanIR_labels = None
 
         if (
             self._pointgroup_symbol in character_table.keys()
@@ -444,27 +403,6 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
                     if self._log_level > 0:
                         print("IR  labels", IR_labels)
                         print("Ram labels", Ram_labels)
-
-                    # If both_labels is True, also run irrep backend for BCS notation
-                    if self._both_labels:
-                        from .irrep_backend import IrRepsIrrep
-                        self._irrep_backend_obj = IrRepsIrrep(
-                            primitive=self._primitive,
-                            qpoint=self._qpoint,
-                            freqs=self._freqs,
-                            eigvecs=self._eig_vecs,
-                            symprec=self._symprec,
-                            log_level=self._log_level
-                        )
-                        self._irrep_backend_obj.run(kpname="GM")
-                        # Store the irrep labels separately
-                        self._irrep_labels_both = []
-                        for irrep in self._irrep_backend_obj._irreps:
-                            if isinstance(irrep, dict):
-                                self._irrep_labels_both.append(irrep.get("label"))
-                            else:
-                                self._irrep_labels_both.append(getattr(irrep, "label", None))
-
             elif (abs(self._qpoint) < self._symprec).all():
                 if self._log_level > 0:
                     print("Database for this point group is not preprared.")
@@ -476,8 +414,154 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             if self._log_level > 0:
                 print(f"Point group {self._pointgroup_symbol} not found in database.")
 
+        # 2. Always run irrep backend for BCS notation
+        try:
+            from .irrep_backend import IrRepsIrrep
+            self._irrep_backend_obj = IrRepsIrrep(
+                primitive=self._primitive,
+                qpoint=self._qpoint,
+                freqs=self._freqs,
+                eigvecs=self._eig_vecs,
+                symprec=self._symprec,
+                log_level=self._log_level
+            )
+            self._irrep_backend_obj.run(kpname=kpname)
+            self._irrep_labels_bcs = []
+            for irrep in self._irrep_backend_obj._irreps:
+                if isinstance(irrep, dict):
+                    self._irrep_labels_bcs.append(irrep.get("label"))
+                else:
+                    self._irrep_labels_bcs.append(getattr(irrep, "label", None))
+        except ImportError:
+            if self._log_level > 0:
+                print("Warning: irrep package not installed. BCS labels will not be available.")
+            self._irrep_labels_bcs = [None] * len(self._freqs)
+        except Exception as e:
+            if self._log_level > 0:
+                print(f"Warning: Failed to compute BCS labels: {e}")
+            self._irrep_labels_bcs = [None] * len(self._freqs)
+
         self._compute_chiral_transitions()
         return True
+
+
+    # --- New Query Methods ---
+    
+    def get_spacegroup(self) -> str:
+        """Get the space group symbol of the parent structure."""
+        return getattr(self, "_spacegroup_symbol", None)
+        
+    def get_frequencies(self):
+        """Return the frequencies in THz for the q-point."""
+        return self._freqs
+
+    def get_eigenvalues(self):
+        """Return the eigenvalues (omega^2) for the q-point."""
+        conv = 15.633302 * 1000 # THz to cm-1 roughly? Wait, what units?
+        # Actually in phonopy eigenvalues are (2pi * freq)^2 with unit conversions. 
+        # But we can just return what phonopy uses or simply freq * abs(freq) with some factor.
+        # Actually, let's just return (freq * 2 * pi)^2 roughly, or just self._freqs**2 * sign.
+        # Better: just return freq ** 2 * sign(freq).
+        freqs = self._freqs
+        return np.sign(freqs) * freqs**2
+
+    def get_eigenvectors(self):
+        """Return the eigenvectors for the q-point."""
+        return self._eig_vecs
+
+    def get_eigendisplacements(self):
+        """Return the eigendisplacements for the q-point."""
+        # Displacements are eigenvectors divided by sqrt(mass)
+        masses = self._primitive.masses
+        eigvecs = self._eig_vecs  # In phonopy, shape is usually (num_atoms*3, num_bands) or vice versa.
+        num_atom = len(masses)
+        disps = np.zeros_like(eigvecs)
+        
+        # Check shape dynamically
+        is_transposed = eigvecs.shape[0] == num_atom * 3
+        
+        for j in range(num_atom):
+            mass_factor = np.sqrt(masses[j])
+            if is_transposed:
+                disps[j*3:(j+1)*3, :] = eigvecs[j*3:(j+1)*3, :] / mass_factor
+            else:
+                disps[:, j*3:(j+1)*3] = eigvecs[:, j*3:(j+1)*3] / mass_factor
+        return disps
+
+    def _get_labels_list(self, label_attr):
+        # Helper to unpack degenerate labels
+        raw_labels = [None] * len(self._freqs)
+        seq = getattr(self, label_attr, None)
+        if seq is None: return raw_labels
+        
+        mode_to_degset = {}
+        if self._degenerate_sets is not None:
+            for set_idx, deg_set in enumerate(self._degenerate_sets):
+                for mode_idx in deg_set:
+                    mode_to_degset[mode_idx] = set_idx
+                    
+        for band_index in range(len(self._freqs)):
+            set_idx = mode_to_degset.get(band_index)
+            if set_idx is not None and set_idx < len(seq):
+                cand = seq[set_idx]
+                if isinstance(cand, (tuple, list)) and cand:
+                    raw_labels[band_index] = cand[0]
+                elif isinstance(cand, str):
+                    raw_labels[band_index] = cand
+        return raw_labels
+
+    def get_mulliken_label(self, mode_index: int) -> str | None:
+        """Get the Mulliken label for a specific mode (only for Gamma point)."""
+        labels = self._get_labels_list("_ir_labels")
+        return labels[mode_index] if mode_index < len(labels) else None
+
+    def get_bcs_label(self, mode_index: int) -> str | None:
+        """Get the BCS label for a specific mode."""
+        if not hasattr(self, "_irrep_labels_bcs") or not self._irrep_labels_bcs:
+            return None
+        return self._irrep_labels_bcs[mode_index]
+
+    def is_ir_active(self, mode_index: int) -> bool:
+        """Check if a specific mode is IR active (only for Gamma point)."""
+        label = self.get_mulliken_label(mode_index)
+        if not label or not hasattr(self, "_RamanIR_labels") or not self._RamanIR_labels:
+            return False
+        return label in self._RamanIR_labels[0]
+
+    def is_raman_active(self, mode_index: int) -> bool:
+        """Check if a specific mode is Raman active (only for Gamma point)."""
+        label = self.get_mulliken_label(mode_index)
+        if not label or not hasattr(self, "_RamanIR_labels") or not self._RamanIR_labels:
+            return False
+        return label in self._RamanIR_labels[1]
+
+    def get_ir_indices(self) -> list[int]:
+        """Return indices of all IR active modes at Gamma."""
+        return [i for i in range(len(self._freqs)) if self.is_ir_active(i)]
+
+    def get_raman_indices(self) -> list[int]:
+        """Return indices of all Raman active modes at Gamma."""
+        return [i for i in range(len(self._freqs)) if self.is_raman_active(i)]
+
+    def get_indices_by_mulliken(self, label: str) -> list[int]:
+        """Return indices of modes with a specific Mulliken label at Gamma."""
+        labels = self._get_labels_list("_ir_labels")
+        return [i for i, lbl in enumerate(labels) if lbl == label]
+
+    def get_indices_by_bcs(self, label: str) -> tuple[np.ndarray, str | None, list[int]]:
+        """Return the q-point coordinates, q-point name (if available), and indices of modes with a specific BCS label."""
+        indices = []
+        if hasattr(self, "_irrep_labels_bcs") and self._irrep_labels_bcs:
+            indices = [i for i, lbl in enumerate(self._irrep_labels_bcs) if lbl == label]
+        
+        # In a single-qpoint class, the q-point name might not be stored directly if not passed in run,
+        # but we can try to return what we have (we usually pass kpname in run()).
+        kpname = getattr(self, "_bcs_kpname", None) # Wait, is _bcs_kpname stored? Let's check run.
+        # Actually in run() we didn't store kpname in self._bcs_kpname except implicitly in chiral transitions.
+        # Let's just retrieve it from _irrep_backend_obj if available.
+        if kpname is None and self._irrep_backend_obj and hasattr(self._irrep_backend_obj, "kpname"):
+            kpname = self._irrep_backend_obj.kpname
+        return (self._qpoint, kpname, indices)
 
     def _get_degenerate_sets(self):
         deg_sets = get_degenerate_sets(self._freqs, cutoff=self._degeneracy_tolerance)
@@ -553,12 +637,9 @@ class IrRepsPhonopy(IrRepsEigen):
         self,
         phonopy_params,
         qpoint,
-        is_little_cogroup: bool = False,
         symprec: float | None = None,
         degeneracy_tolerance: float = 1e-5,
         log_level: int = 0,
-        backend: str = "phonopy",
-        both_labels: bool = False,
     ) -> None:
         phonon = phonopy_load(phonopy_params)
         q = np.asarray(qpoint, dtype=float)
@@ -576,12 +657,9 @@ class IrRepsPhonopy(IrRepsEigen):
             qpoint,
             freqs,
             eigvecs,
-            is_little_cogroup=is_little_cogroup,
             symprec=symprec,
             degeneracy_tolerance=degeneracy_tolerance,
             log_level=log_level,
-            backend=backend,
-            both_labels=both_labels,
         )
 
 
@@ -592,12 +670,9 @@ class IrRepsAnaddb(IrRepsEigen):
         self,
         phbst_fname,
         ind_q,
-        is_little_cogroup: bool = False,
         symprec: float = 1e-5,
         degeneracy_tolerance: float = 1e-5,
         log_level: int = 0,
-        backend: str = "phonopy",
-        both_labels: bool = False,
     ) -> None:
         atoms, qpoints, freqs, eig_vecs = read_phbst_freqs_and_eigvecs(phbst_fname)
         primitive_atoms = ase_atoms_to_phonopy_atoms(atoms)
@@ -607,34 +682,27 @@ class IrRepsAnaddb(IrRepsEigen):
             qpoints[ind_q],
             freqs[ind_q],
             eig_vecs[ind_q],
-            is_little_cogroup=is_little_cogroup,
             symprec=symprec,
             degeneracy_tolerance=degeneracy_tolerance,
             log_level=log_level,
-            backend=backend,
-            both_labels=both_labels,
         )
 
 
 def print_irreps(
     phbst_fname,
     ind_q,
-    is_little_cogroup=False,
     symprec=1e-5,
     degeneracy_tolerance=1e-4,
     log_level=0,
     show_verbose=False,
-    backend="phonopy",
     kpname=None,
 ):
     irr = IrRepsAnaddb(
         phbst_fname=phbst_fname,
         ind_q=ind_q,
-        is_little_cogroup=is_little_cogroup,
         symprec=symprec,
         degeneracy_tolerance=degeneracy_tolerance,
         log_level=log_level,
-        backend=backend,
     )
     irr.run(kpname=kpname)
 
@@ -642,7 +710,7 @@ def print_irreps(
     print(irr.format_summary_table())
 
     # Optionally print verbose output
-    if show_verbose and backend == "phonopy":
+    if show_verbose:
         print()
         print("# Verbose irreps output")
         print(irr.get_verbose_output())
@@ -653,24 +721,18 @@ def print_irreps(
 def print_irreps_phonopy(
     phonopy_params,
     qpoint,
-    is_little_cogroup: bool = False,
     symprec: float | None = None,
     degeneracy_tolerance: float = 1e-4,
     log_level: int = 0,
     show_verbose: bool = False,
-    backend: str = "phonopy",
     kpname=None,
-    both_labels: bool = False,
 ):
     irr = IrRepsPhonopy(
         phonopy_params=phonopy_params,
         qpoint=qpoint,
-        is_little_cogroup=is_little_cogroup,
         symprec=symprec,
         degeneracy_tolerance=degeneracy_tolerance,
         log_level=log_level,
-        backend=backend,
-        both_labels=both_labels,
     )
     irr.run(kpname=kpname)
 
@@ -678,9 +740,141 @@ def print_irreps_phonopy(
     print(irr.format_summary_table())
 
     # Optionally print verbose output
-    if show_verbose and backend == "phonopy":
+    if show_verbose:
         print()
         print("# Verbose irreps output")
         print(irr.get_verbose_output())
 
     return irr
+
+
+def get_special_qpoints(primitive_atoms, symprec=1e-5) -> list[dict]:
+    """
+    Get all special q-points for a given primitive structure.
+    Uses the 'irrep' package to find the BCS special q-points and transforms
+    them to the input structure's reciprocal basis.
+    
+    Returns:
+        List of dictionaries with keys:
+        - label: The BCS q-point label (e.g., 'GM', 'X')
+        - qpoint_bcs: The q-point coordinates in the standard BCS reciprocal cell
+        - qpoint_input: The q-point coordinates in the input cell's reciprocal basis
+    """
+    try:
+        from irrep.spacegroup import SpaceGroup
+        try:
+            from irreptables.irreps import IrrepTable
+        except ImportError:
+            from irreptables import IrrepTable
+    except ImportError:
+        raise ImportError("The 'irrep' package is required to get special q-points.")
+
+    # Initialize SpaceGroup which computes refUC (transformation to standard BCS cell)
+    sg = SpaceGroup(
+        lattice=primitive_atoms.cell,
+        positions=primitive_atoms.scaled_positions,
+        types=primitive_atoms.numbers,
+        symprec=symprec,
+        spinor=False
+    )
+    
+    table = IrrepTable(sg.number_str, spinor=False)
+    refUCTinv = np.linalg.inv(sg.refUC.T)
+    
+    seen_labels = set()
+    results = []
+    
+    for irr in table.irreps:
+        if irr.kpname not in seen_labels:
+            seen_labels.add(irr.kpname)
+            k_bcs = np.array(irr.k, dtype=float)
+            k_input = refUCTinv @ k_bcs
+            
+            # Clean up near-zero values
+            k_input = np.where(np.abs(k_input) < 1e-5, 0.0, k_input)
+            k_bcs = np.where(np.abs(k_bcs) < 1e-5, 0.0, k_bcs)
+            
+            results.append({
+                "label": irr.kpname,
+                "qpoint_bcs": k_bcs.tolist(),
+                "qpoint_input": k_input.tolist()
+            })
+            
+    return results
+
+
+def get_all_irreps_phonopy(
+    phonopy_params,
+    symprec: float | None = None,
+    degeneracy_tolerance: float = 1e-4,
+    log_level: int = 0,
+) -> dict[str, IrRepsPhonopy]:
+    """
+    Compute irreps for all special q-points using direct phonopy calculations.
+    Returns a dictionary mapping the q-point label to its IrRepsPhonopy instance.
+    """
+    phonon = phonopy_load(phonopy_params)
+    primitive = phonon.primitive
+    if symprec is None:
+        symprec = phonon._symprec
+        
+    special_qs = get_special_qpoints(primitive, symprec=symprec)
+    results = {}
+    
+    for sq in special_qs:
+        label = sq["label"]
+        q_input = sq["qpoint_input"]
+        
+        irr = IrRepsPhonopy(
+            phonopy_params=phonopy_params,
+            qpoint=q_input,
+            symprec=symprec,
+            degeneracy_tolerance=degeneracy_tolerance,
+            log_level=log_level
+        )
+        irr.run(kpname=label)
+        results[label] = irr
+        
+    return results
+
+def get_all_irreps_anaddb(
+    phbst_fname: str,
+    symprec: float = 1e-5,
+    degeneracy_tolerance: float = 1e-4,
+    log_level: int = 0,
+) -> dict[int, IrRepsAnaddb]:
+    """
+    Compute irreps for all q-points present in the anaddb PHBST file.
+    Returns a dictionary mapping the q-point index to its IrRepsAnaddb instance.
+    """
+    atoms, qpoints, freqs, eig_vecs = read_phbst_freqs_and_eigvecs(phbst_fname)
+    primitive = ase_atoms_to_phonopy_atoms(atoms)
+    
+    try:
+        special_qs = get_special_qpoints(primitive, symprec=symprec)
+    except Exception:
+        special_qs = []
+        
+    results = {}
+    for ind_q, q in enumerate(qpoints):
+        # Try to match q with a special q-point
+        matched_label = None
+        for sq in special_qs:
+            q_input = np.array(sq["qpoint_input"])
+            diff = q - q_input
+            diff -= np.rint(diff)
+            if np.all(np.abs(diff) < symprec):
+                matched_label = sq["label"]
+                break
+                
+        irr = IrRepsAnaddb(
+            phbst_fname=phbst_fname,
+            ind_q=ind_q,
+            symprec=symprec,
+            degeneracy_tolerance=degeneracy_tolerance,
+            log_level=log_level
+        )
+        irr.run(kpname=matched_label)
+        results[ind_q] = irr
+        
+    return results
