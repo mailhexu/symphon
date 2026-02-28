@@ -17,6 +17,9 @@ class AbstractMagneticTransitionFinder:
         self._struct_finder = ChiralTransitionFinder(spg_number, symprec)
         self.spacegroup_info = self._struct_finder.spacegroup_info
         
+        if self.spacegroup_info.is_sohncke:
+            raise ValueError(f"Parent space group {spg_number} is already chiral (Sohncke group).")
+        
     def find_transitions(self, qpoint: List[float], include_multi_k: bool = False) -> List[dict]:
         info = self.spacegroup_info
         P, P_inv = self._struct_finder._get_transformation_matrices()
