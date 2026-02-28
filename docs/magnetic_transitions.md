@@ -241,3 +241,59 @@ for t in transitions:
 ```
 
 The output list `transitions` contains a dictionary for each valid order parameter direction (OPD) evaluated, carrying its irrep information, vector parameters, the resultant unified magnetic space group ID, the BNS symbol/number, and a boolean explicitly flagging if the resulting phase is chiral.
+
+## 5. Abstract Magnetic Phase Transitions (Structure-less)
+
+You can also compute possible magnetic space group phase transitions purely from group theory—without providing any input crystal structure. 
+
+This is identical in principle to how displacive transitions are computed by `ChiralTransitionFinder`. However, instead of evaluating structural order parameters, it evaluates generic time-odd (magnetic) order parameters transforming according to the abstract space group irreducible representations. 
+
+> **Note:** Because this does not take an input structure, it assumes an arbitrary general magnetic configuration. It cannot guarantee that a given abstract transition is physically achievable by specific magnetic atoms on specific Wyckoff positions (which requires the site-specific magnetic representations covered in Section 3).
+
+### 5.1. The Group Theory Method
+If a transition is driven by a time-odd order parameter $\mathbf{c}$ transforming as an irreducible representation $\Delta$, then for any spatial symmetry $g$ in the parent little group:
+* If $g$ leaves the order parameter strictly invariant ($\Delta(g)\mathbf{c} = \mathbf{c}$), it becomes a pure spatial symmetry: $(g, 1)$.
+* If $g$ inverts the order parameter ($\Delta(g)\mathbf{c} = -\mathbf{c}$), it must be coupled with time-reversal $\theta$ to remain a symmetry of the new phase: $(g, \theta)$.
+
+By constructing a supercell using the fractional denominators of the $\mathbf{q}$-point and grouping these identified operations into purely spatial vs. time-reversed subsets, we can feed the matrices directly into `spglib.get_magnetic_spacegroup_type_from_symmetry` to identify the resultant generic Magnetic Space Group.
+
+### 5.2. Abstract Magnetic CLI Usage
+
+```bash
+# Example: Find all abstract chiral magnetic transitions from Space Group 221 at the X point
+abstract-magnetic-chiral --spg 221 --qpoint 0 0 0.5 --all
+```
+
+**Example Output:**
+```text
+Parent Space Group: 221
+q-point: [0.0, 0.0, 0.5]
+--------------------------------------------------
+Computing abstract magnetic irreps and subgroups...
+
+================================================================================
+ALL MAGNETIC TRANSITIONS
+================================================================================
+   Irrep |   Dim |   k-type | Magnetic Space Group |   Chiral
+--------------------------------------------------------------------------------
+       0 |     1 |      1-k |   1008 (    123.348) |       No
+       1 |     1 |      1-k |   1020 (    124.360) |       No
+...
+```
+
+### 5.3. Abstract Python API
+You can run this programmatically by importing `AbstractMagneticTransitionFinder`:
+
+```python
+from anaddb_irreps.abstract_magnetic import AbstractMagneticTransitionFinder
+
+# Initialize with the Space Group number (1-230)
+finder = AbstractMagneticTransitionFinder(spg_number=221, symprec=1e-5)
+
+# Run the purely abstract transition analysis (optionally include multi-k)
+transitions = finder.find_transitions(qpoint=[0.0, 0.0, 0.5], include_multi_k=True)
+
+for t in transitions:
+    if t['is_chiral']:
+        print(f"Irrep: {t['irrep_index']}, BNS: {t['bns_number']}")
+```
