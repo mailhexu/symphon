@@ -339,3 +339,17 @@ The final symmetry of a material is the intersection of its structural and magne
 | **Chiral** | **Chiral** | **Chiral** | Both independently break all improper symmetries. |
 | Achiral | Achiral | Achiral | Both order parameters preserve at least one common improper symmetry (e.g., both preserve $\bar{1}$). |
 | Achiral | Achiral | **Chiral** | **Intersection Mechanism:** The structure preserves one improper symmetry (e.g., $m_x$), while magnetism preserves a *different* improper symmetry (e.g., $\bar{1}'$). Their intersection leaves no shared improper symmetries. The combination is chiral! |
+
+### 6.2 Example: The "Intersection Mechanism" (Achiral + Achiral = Chiral)
+
+This "hidden" pathway is one of the most powerful mechanisms for discovering new chiral materials, as it does not require complex non-collinear magnetism or massive structural helices. You only need two simple, misaligned symmetry-breaking events.
+
+Consider a highly symmetric centrosymmetric parent phase.
+1. **The Structural Distortion** occurs first. A phonon condenses that breaks inversion symmetry ($\bar{1}$) but preserves a spatial mirror plane ($m$). 
+   * **Result:** The crystal structure is now $Pm$. This is **achiral**.
+2. **The Magnetic Ordering** occurs next. The spins align in a simple collinear antiferromagnetic pattern that breaks the spatial mirror plane ($m$) but preserves time-reversed inversion ($\bar{1}'$). 
+   * **Result:** The magnetic order alone is described by $P\bar{1}'$. This is also **achiral**.
+3. **The Combination:** Because they occur in the same material, the surviving symmetries must be valid for *both* states. The structural distortion forbids $\bar{1}'$ (atoms moved out of centrosymmetric positions) and the magnetic ordering forbids $m$ (spins point in directions that break the mirror).
+   * **Result:** The intersection of their symmetries ($Pm \cap P\bar{1}'$) destroys *all* improper operations. The resulting symmetry is the trivially chiral magnetic space group $P1$. 
+   
+**Conclusion:** $G_{\text{struct}}$ (Achiral) + $G_{\text{mag}}$ (Achiral) = $G_{\text{final}}$ (Chiral).

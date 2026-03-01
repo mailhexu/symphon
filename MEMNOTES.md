@@ -36,3 +36,8 @@ Because chirality requires the **total absence** of improper operations:
 * If $G_{\text{mag}}$ is Achiral (preserves $\bar{1}'$)
 * The intersection $G_{\text{final}}$ preserves neither. The final state is **Chiral**.
 This provides a highly robust "hidden" pathway to design chiral materials by intentionally mismatching the symmetry-breaking directions of magnetic and structural order parameters.
+
+**Concrete Example of the Intersection Mechanism:**
+1. **Structural Distortion:** Breaks $\bar{1}$, preserves $m$. (Symmetry: $Pm$, Achiral)
+2. **Magnetic Ordering:** Breaks $m$, preserves $\bar{1}'$. (Symmetry: $P\bar{1}'$, Achiral)
+3. **Combined:** $Pm \cap P\bar{1}' = P1$ (Chiral!). The structure forbids $\bar{1}'$ and the magnetism forbids $m$. All improper symmetries are destroyed.
