@@ -297,3 +297,34 @@ for t in transitions:
     if t['is_chiral']:
         print(f"Irrep: {t['irrep_index']}, BNS: {t['bns_number']}")
 ```
+
+## 6. Physical Pathways to Chirality
+
+The interplay between crystal structure (atomic displacements) and magnetic structure (spin ordering) gives rise to distinct physical pathways to break macroscopic chirality. We can systematically categorize these pathways into four primary categories based on the "levers" of symmetry breaking: **Structural/Displacive** (time-even order parameters) and **Magnetic** (time-odd order parameters).
+
+### Category 1: Purely Structural Chiral Transitions
+**Pathway:** Achiral Paramagnetic $\to$ Chiral Paramagnetic
+* **Mechanism:** A lattice distortion (e.g., condensation of a phonon) breaks all mirror, inversion, and roto-inversion symmetries. 
+* **The Physics:** The magnetic moments remain disordered (time-reversal symmetry is fully preserved). The chirality comes *entirely* from the geometric arrangement of the atoms (e.g., atoms forming a physical helix like in Quartz or Tellurium).
+* **In our package:** This is completely covered by `ChiralTransitionFinder` in `chiral_transitions.py`.
+
+### Category 2: Purely Magnetic Chiral Transitions
+**Pathway:** Achiral Paramagnetic $\to$ Achiral Lattice with Chiral Spin Order
+* **Mechanism:** The atomic positions *do not move* from their highly symmetric, achiral parent positions. Instead, the magnetic spins order in a complex arrangement that breaks all improper symmetries.
+* **The Catch (Why this is rare):** If an achiral crystal has an inversion center ($\bar{1}$), a purely magnetic transition will often break $\bar{1}$ but preserve **time-reversed inversion ($\bar{1}'$)**. If a material has $\bar{1}'$, it is *still macroscopically achiral* (it will not show natural optical rotation, for example). To be truly chiral, the spin order must be complex enough (usually non-collinear, non-coplanar, or multi-$\mathbf{k}$) to break both $\bar{1}$ *and* $\bar{1}'$.
+* **In our package:** This is exactly what `MagneticTransitionFinder` and `AbstractMagneticTransitionFinder` identify. By filtering with `is_chiral == True`, the code guarantees that neither spatial mirrors ($m$) nor time-reversed mirrors ($m'$) exist in the final state.
+
+### Category 3: Sequential Magneto-Structural Transitions
+In many real materials, chirality is achieved in two distinct thermodynamic steps at different temperatures ($T_1$ and $T_2$).
+
+**Pathway 3A (Structure leads):** Achiral Paramagnetic $\xrightarrow{T_1}$ **Chiral** Paramagnetic $\xrightarrow{T_2}$ **Chiral** Magnetic
+* **Mechanism:** The lattice first distorts into a chiral space group at high temperature. At a lower temperature, the spins order. Because the lattice is already chiral, the magnetic order is "forced" into a chiral magnetic space group. 
+
+**Pathway 3B (Magnetism leads):** Achiral Paramagnetic $\xrightarrow{T_1}$ **Achiral** Magnetic $\xrightarrow{T_2}$ **Chiral** Magnetic
+* **Mechanism:** The material orders magnetically first, but the magnetic structure preserves a time-reversed improper symmetry (like $\bar{1}'$, so it is still achiral). At a lower temperature, a secondary structural distortion (magnetoelastic striction or a secondary phonon) breaks that remaining $\bar{1}'$ symmetry.
+
+### Category 4: Simultaneous / Improper Coupled Transitions
+**Pathway:** Achiral Paramagnetic $\to$ Chiral Magnetic
+* **Mechanism:** A structural distortion and a magnetic ordering condense at the exact same temperature. This usually happens when one order parameter is primary, and the other is "improper" (forced to emerge due to strong free-energy coupling terms, like $M^2 P$ or $M L P$ where $M$ is magnetization, $L$ is a structural mode, etc.). 
+* **The Physics:** The final state is structurally chiral AND magnetically chiral simultaneously.
+
