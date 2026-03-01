@@ -20,6 +20,11 @@ from .chiral_transitions import (
     format_transition_table,
 )
 
+from .msg_chiral import (
+    identify_msg_chirality,
+    MSGChiralityInfo,
+)
+
 __all__ = [
     "IrRepsAnaddb",
     "IrRepsPhonopy",
@@ -34,6 +39,8 @@ __all__ = [
     "ChiralTransition",
     "SpaceGroupInfo",
     "format_transition_table",
+    "identify_msg_chirality",
+    "MSGChiralityInfo",
 ]
 
 

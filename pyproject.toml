@@ -42,6 +42,9 @@ packages = ["anaddb_irreps"]
 anaddb-irreps = "anaddb_irreps.cli:main"
 phonopy-irreps = "anaddb_irreps.cli:main_phonopy"
 anaddb-chiral = "anaddb_irreps.cli_chiral:main"
+magnetic-chiral = "anaddb_irreps.cli_magnetic:main"
+abstract-magnetic-chiral = "anaddb_irreps.cli_abstract_magnetic:main"
+anaddb-msg-chiral = "anaddb_irreps.cli_msg_chiral:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
