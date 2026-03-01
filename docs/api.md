@@ -226,3 +226,21 @@ MagneticTransitionFinder(
 - `build_supercell(qpoint, opd, basis)`: Constructs the supercell lattice and spin configurations corresponding to an order parameter direction.
 - `check_chirality(dataset) -> bool`: Analyzes a magnetic symmetry dataset to evaluate chiral features.
 - `find_transitions(qpoint: list[float]) -> list[dict]`: Discovers accessible magnetic space groups by applying symmetry-adapted distortions.
+
+### `class AbstractMagneticTransitionFinder` (`abstract_magnetic.py`)
+
+A pure group-theoretical implementation to find possible magnetic space group phase transitions without providing any input crystal structure. It evaluates generic time-odd (magnetic) order parameters transforming according to the abstract space group irreducible representations.
+
+**Initialization:**
+```python
+AbstractMagneticTransitionFinder(
+    spg_number: int, 
+    symprec: float = 1e-5
+)
+```
+- `spg_number`: International space group number of the parent paramagnetic phase (1-230). Will raise a `ValueError` if the parent is already a chiral (Sohncke) group.
+- `symprec`: Symmetry tolerance.
+
+**Key Methods:**
+- `find_transitions(qpoint: list[float], include_multi_k: bool = False) -> list[dict]`: Identifies all magnetic subgroups resulting from the generic time-odd order parameter condensing at the specified `qpoint`. Returns a list of dictionaries detailing the transitions, including the `bns_number` (Magnetic Space Group), `irrep_index`, `opd` (Order Parameter Direction), and whether the transition is purely chiral (`is_chiral`). If `include_multi_k` is True, it will evaluate superpositions of multiple arms of the star of q.
+- `format_transition_table(qpoint: list[float], transitions: list[dict]) -> str`: Formats the results into a markdown-compatible table for output logs or CLI displays.
