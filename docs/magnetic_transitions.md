@@ -306,27 +306,42 @@ The interplay between crystal structure (atomic displacements) and magnetic stru
 **Pathway:** Achiral Paramagnetic $\to$ Chiral Paramagnetic
 * **Mechanism:** A lattice distortion (e.g., condensation of a phonon) breaks all mirror, inversion, and roto-inversion symmetries. 
 * **The Physics:** The magnetic moments remain disordered (time-reversal symmetry is fully preserved). The chirality comes *entirely* from the geometric arrangement of the atoms (e.g., atoms forming a physical helix like in Quartz or Tellurium).
-* **In our package:** This is completely covered by `ChiralTransitionFinder` in `chiral_transitions.py`.
+* **How to find the MSG:**
+  1. Use `ChiralTransitionFinder` to find the purely structural subgroup (a Sohncke group).
+  2. Because time-reversal ($\theta$) is unbroken, the resulting MSG is the Type II (grey) magnetic space group of the resulting structural space group. For example, if the lattice distorts to $P4_1$, the MSG is $P4_11'$.
 
 ### Category 2: Purely Magnetic Chiral Transitions
 **Pathway:** Achiral Paramagnetic $\to$ Achiral Lattice with Chiral Spin Order
 * **Mechanism:** The atomic positions *do not move* from their highly symmetric, achiral parent positions. Instead, the magnetic spins order in a complex arrangement that breaks all improper symmetries.
 * **The Catch (Why this is rare):** If an achiral crystal has an inversion center ($\bar{1}$), a purely magnetic transition will often break $\bar{1}$ but preserve **time-reversed inversion ($\bar{1}'$)**. If a material has $\bar{1}'$, it is *still macroscopically achiral* (it will not show natural optical rotation, for example). To be truly chiral, the spin order must be complex enough (usually non-collinear, non-coplanar, or multi-$\mathbf{k}$) to break both $\bar{1}$ *and* $\bar{1}'$.
-* **In our package:** This is exactly what `MagneticTransitionFinder` and `AbstractMagneticTransitionFinder` identify. By filtering with `is_chiral == True`, the code guarantees that neither spatial mirrors ($m$) nor time-reversed mirrors ($m'$) exist in the final state.
+* **How to find the MSG:**
+  1. Use `MagneticTransitionFinder` or `AbstractMagneticTransitionFinder` on the parent phase.
+  2. Filter the output for `is_chiral == True`. This directly yields the BNS number and the Order Parameter Direction (OPD) of the chiral spin texture.
 
 ### Category 3: Sequential Magneto-Structural Transitions
 In many real materials, chirality is achieved in two distinct thermodynamic steps at different temperatures ($T_1$ and $T_2$).
 
 **Pathway 3A (Structure leads):** Achiral Paramagnetic $\xrightarrow{T_1}$ **Chiral** Paramagnetic $\xrightarrow{T_2}$ **Chiral** Magnetic
-* **Mechanism:** The lattice first distorts into a chiral space group at high temperature. At a lower temperature, the spins order. Because the lattice is already chiral, the magnetic order is "forced" into a chiral magnetic space group. 
+* **Mechanism:** The lattice first distorts into a chiral space group at high temperature. At a lower temperature, the spins order. Because the lattice is already chiral, the magnetic order is "forced" into a chiral magnetic space group.
+* **How to find the MSG:**
+  1. First, use `ChiralTransitionFinder` to identify the intermediate structurally chiral phase.
+  2. Construct the physical atomic geometry of this intermediate lower-symmetry phase.
+  3. Pass this relaxed intermediate structure into `MagneticTransitionFinder`. Any resulting magnetic order will naturally have a chiral MSG. 
 
 **Pathway 3B (Magnetism leads):** Achiral Paramagnetic $\xrightarrow{T_1}$ **Achiral** Magnetic $\xrightarrow{T_2}$ **Chiral** Magnetic
 * **Mechanism:** The material orders magnetically first, but the magnetic structure preserves a time-reversed improper symmetry (like $\bar{1}'$, so it is still achiral). At a lower temperature, a secondary structural distortion (magnetoelastic striction or a secondary phonon) breaks that remaining $\bar{1}'$ symmetry.
+* **How to find the MSG:**
+  1. Use `MagneticTransitionFinder` on the parent phase to locate the intermediate *achiral* MSG (e.g., $P\bar{1}'$).
+  2. To find the final transition, treat this intermediate achiral MSG as the new parent phase.
+  3. Run structural symmetry-breaking analysis using the operations of the achiral MSG to see which structural distortions (phonons) break the remaining $\bar{1}'$ symmetry. Their mathematical intersection defines the final chiral MSG.
 
 ### Category 4: Simultaneous / Improper Coupled Transitions
 **Pathway:** Achiral Paramagnetic $\to$ Chiral Magnetic
 * **Mechanism:** A structural distortion and a magnetic ordering condense at the exact same temperature. This usually happens when one order parameter is primary, and the other is "improper" (forced to emerge due to strong free-energy coupling terms, like $M^2 P$ or $M L P$ where $M$ is magnetization, $L$ is a structural mode, etc.). 
 * **The Physics:** The final state is structurally chiral AND magnetically chiral simultaneously.
+* **How to find the MSG:**
+  1. Calculate the basis vectors for both the structural distortion and the magnetic order.
+  2. Use `spglib.get_magnetic_symmetry_dataset()` on a custom combined supercell that includes *both* the atomic displacements and the spin vectors simultaneously.
 
 
 ### 6.1 The Chirality Intersection Table

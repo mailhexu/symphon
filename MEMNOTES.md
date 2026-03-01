@@ -8,36 +8,53 @@ A strictly **chiral** state requires that its space group (or magnetic space gro
 * If an operation has $\det(R) = -1$ (like $m$, $\bar{1}$), it is geometrically achiral.
 * If an operation has $\det(R) = -1$ coupled with time-reversal (like $m'$, $\bar{1}'$), it is *magnetically* achiral.
 
-### 1. Purely Structural Chiral Transitions
+### The Chirality Intersection Table
+The final symmetry of a material is the intersection of its structural and magnetic symmetries ($G_{\text{final}} = G_{\text{struct}} \cap G_{\text{mag}}$). 
+
+| Structural Symmetry ($G_{\text{struct}}$) | Magnetic Symmetry ($G_{\text{mag}}$) | Combined Symmetry ($G_{\text{final}}$) | Physical Mechanism |
+| :--- | :--- | :--- | :--- |
+| **Chiral** | Achiral | **Chiral** | The chiral lattice breaks all improper symmetries. Magnetism cannot restore them. |
+| Achiral | **Chiral** | **Chiral** | The complex spin texture breaks all improper symmetries of the symmetric lattice. |
+| **Chiral** | **Chiral** | **Chiral** | Both independently break all improper symmetries. |
+| Achiral | Achiral | Achiral | Both preserve at least one common improper symmetry (e.g., both preserve $\bar{1}$). |
+| Achiral | Achiral | **Chiral** | **Intersection Mechanism:** $G_{\text{struct}}$ preserves one improper symmetry (e.g., $m_x$), $G_{\text{mag}}$ preserves a *different* one (e.g., $\bar{1}'$). Their intersection leaves no shared improper symmetries! |
+
+---
+
+## The 4 Categories of Transitions & How to Find the MSG
+
+### Category 1: Purely Structural Chiral Transitions
 * **Pathway:** Achiral Paramagnetic $\to$ Chiral Paramagnetic
-* **Implementation:** Use `ChiralTransitionFinder`. Finds structural phonons that break all improper spatial symmetries. Time-reversal is unbroken.
+* **Mechanism:** Structural phonons break all improper spatial symmetries. Time-reversal is unbroken.
+* **How to find the MSG:**
+  1. Use `ChiralTransitionFinder` to find the purely structural subgroup (a Sohncke group).
+  2. Because time-reversal ($\theta$) is unbroken, the resulting MSG is just the **Type II (grey) magnetic space group** of the resulting structural space group. For example, if the lattice distorts to $P4_1$, the MSG is $P4_11'$ (BNS number ends in `.2`).
 
-### 2. Purely Magnetic Chiral Transitions
+### Category 2: Purely Magnetic Chiral Transitions
 * **Pathway:** Achiral Paramagnetic $\to$ Achiral Lattice + Chiral Spin Order
-* **Implementation:** Use `MagneticTransitionFinder` or `AbstractMagneticTransitionFinder`. 
-* **Note:** Very rare in simple collinear systems. Breaking $\bar{1}$ magnetically often preserves $\bar{1}'$ (time-reversed inversion), which remains macroscopically achiral. True magnetic chirality usually requires non-collinear, non-coplanar, or multi-$\mathbf{k}$ magnetic structures to destroy *both* $\bar{1}$ and $\bar{1}'$.
+* **Mechanism:** Very rare. True magnetic chirality from a symmetric lattice requires non-collinear or multi-$\mathbf{k}$ magnetic structures to destroy *both* $\bar{1}$ and $\bar{1}'$.
+* **How to find the MSG:**
+  1. Use `MagneticTransitionFinder(cell, mag_sites)`. 
+  2. Filter the output for `is_chiral == True`. This directly yields the BNS number and the Order Parameter Direction (OPD) of the chiral spin texture.
 
-### 3. Sequential Magneto-Structural Transitions
-* **Pathway 3A (Structure leads):** Achiral Paramagnetic $\xrightarrow{T_1}$ Chiral Paramagnetic $\xrightarrow{T_2}$ Chiral Magnetic. 
-  * The lattice distorts into a chiral space group first. Subsequent magnetic ordering is naturally forced into a chiral magnetic space group.
-* **Pathway 3B (Magnetism leads):** Achiral Paramagnetic $\xrightarrow{T_1}$ Achiral Magnetic $\xrightarrow{T_2}$ Chiral Magnetic.
-  * System orders magnetically first but retains a symmetry like $\bar{1}'$. A secondary structural distortion later breaks the remaining $\bar{1}'$ symmetry.
-  * **Workflow:** Find the achiral magnetic transition first, then use structural irrep analysis on that intermediate BNS group as the new parent phase.
+### Category 3: Sequential Magneto-Structural Transitions
+Achieved in two distinct thermodynamic steps at different temperatures ($T_1$ and $T_2$).
 
-### 4. Simultaneous / Improper Coupled Transitions
+* **Pathway 3A (Structure leads):** Achiral Paramag $\xrightarrow{T_1}$ Chiral Paramag $\xrightarrow{T_2}$ Chiral Magnetic. 
+  * **How to find the MSG:**
+    1. First, use `ChiralTransitionFinder` to identify the intermediate structurally chiral phase (e.g., $P4_1$).
+    2. Construct the actual atomic geometry of this intermediate phase.
+    3. Pass this new, relaxed, lower-symmetry cell into `MagneticTransitionFinder`. Any resulting magnetic order will naturally have a chiral MSG because the parent lattice is already chiral.
+
+* **Pathway 3B (Magnetism leads / Intersection Mechanism):** Achiral Paramag $\xrightarrow{T_1}$ Achiral Mag $\xrightarrow{T_2}$ Chiral Mag.
+  * **How to find the MSG:**
+    1. Use `MagneticTransitionFinder` on the parent phase. Locate an *achiral* MSG (e.g., one that retains $\bar{1}'$).
+    2. To find the $T_2$ transition, treat this achiral MSG as your new parent phase. 
+    3. Run a structural symmetry-breaking analysis using the operations of the achiral MSG to see which structural distortions (phonons) break the remaining $\bar{1}'$ symmetry. The intersection of these two phases defines the final chiral MSG.
+
+### Category 4: Simultaneous / Improper Coupled Transitions
 * **Pathway:** Achiral Paramagnetic $\to$ Chiral Magnetic
-* **Mechanism:** Structural and magnetic distortions condense at the same temperature, often driven by strong free-energy coupling (e.g., $M^2 P$). The final state is simultaneously structurally and magnetically chiral.
-
-
-### 5. The "Intersection Mechanism" (Achiral + Achiral = Chiral)
-The combined symmetry of a system is the mathematical intersection of the structural and magnetic subgroups ($G_{\text{final}} = G_{\text{struct}} \cap G_{\text{mag}}$). 
-Because chirality requires the **total absence** of improper operations:
-* If $G_{\text{struct}}$ is Achiral (preserves $m_x$)
-* If $G_{\text{mag}}$ is Achiral (preserves $\bar{1}'$)
-* The intersection $G_{\text{final}}$ preserves neither. The final state is **Chiral**.
-This provides a highly robust "hidden" pathway to design chiral materials by intentionally mismatching the symmetry-breaking directions of magnetic and structural order parameters.
-
-**Concrete Example of the Intersection Mechanism:**
-1. **Structural Distortion:** Breaks $\bar{1}$, preserves $m$. (Symmetry: $Pm$, Achiral)
-2. **Magnetic Ordering:** Breaks $m$, preserves $\bar{1}'$. (Symmetry: $P\bar{1}'$, Achiral)
-3. **Combined:** $Pm \cap P\bar{1}' = P1$ (Chiral!). The structure forbids $\bar{1}'$ and the magnetism forbids $m$. All improper symmetries are destroyed.
+* **Mechanism:** Structural and magnetic distortions condense at the same temperature due to strong free-energy coupling (e.g., $M^2 P$). 
+* **How to find the MSG:**
+  1. Calculate the basis vectors for both the structural distortion and the magnetic order.
+  2. Use `spglib.get_magnetic_symmetry_dataset()` on a custom supercell that includes *both* the atomic displacements and the spin vectors simultaneously.
