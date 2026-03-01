@@ -328,3 +328,14 @@ In many real materials, chirality is achieved in two distinct thermodynamic step
 * **Mechanism:** A structural distortion and a magnetic ordering condense at the exact same temperature. This usually happens when one order parameter is primary, and the other is "improper" (forced to emerge due to strong free-energy coupling terms, like $M^2 P$ or $M L P$ where $M$ is magnetization, $L$ is a structural mode, etc.). 
 * **The Physics:** The final state is structurally chiral AND magnetically chiral simultaneously.
 
+
+### 6.1 The Chirality Intersection Table
+The final symmetry of a material is the intersection of its structural and magnetic symmetries ($G_{\text{final}} = G_{\text{struct}} \cap G_{\text{mag}}$). Because chirality is defined by the *absence* of improper operations ($m, \bar{1}, \bar{4}$ and their time-reversed counterparts), an interesting phenomenon occurs when mixing two achiral states.
+
+| Structural Symmetry ($G_{\text{struct}}$) | Magnetic Symmetry ($G_{\text{mag}}$) | Combined Symmetry ($G_{\text{final}}$) | Physical Mechanism |
+| :--- | :--- | :--- | :--- |
+| **Chiral** | Achiral | **Chiral** | The chiral lattice breaks all improper symmetries. Magnetism cannot restore them. |
+| Achiral | **Chiral** | **Chiral** | The complex spin texture breaks all improper symmetries of the symmetric lattice. |
+| **Chiral** | **Chiral** | **Chiral** | Both independently break all improper symmetries. |
+| Achiral | Achiral | Achiral | Both order parameters preserve at least one common improper symmetry (e.g., both preserve $\bar{1}$). |
+| Achiral | Achiral | **Chiral** | **Intersection Mechanism:** The structure preserves one improper symmetry (e.g., $m_x$), while magnetism preserves a *different* improper symmetry (e.g., $\bar{1}'$). Their intersection leaves no shared improper symmetries. The combination is chiral! |

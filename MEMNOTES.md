@@ -28,3 +28,11 @@ A strictly **chiral** state requires that its space group (or magnetic space gro
 * **Pathway:** Achiral Paramagnetic $\to$ Chiral Magnetic
 * **Mechanism:** Structural and magnetic distortions condense at the same temperature, often driven by strong free-energy coupling (e.g., $M^2 P$). The final state is simultaneously structurally and magnetically chiral.
 
+
+### 5. The "Intersection Mechanism" (Achiral + Achiral = Chiral)
+The combined symmetry of a system is the mathematical intersection of the structural and magnetic subgroups ($G_{\text{final}} = G_{\text{struct}} \cap G_{\text{mag}}$). 
+Because chirality requires the **total absence** of improper operations:
+* If $G_{\text{struct}}$ is Achiral (preserves $m_x$)
+* If $G_{\text{mag}}$ is Achiral (preserves $\bar{1}'$)
+* The intersection $G_{\text{final}}$ preserves neither. The final state is **Chiral**.
+This provides a highly robust "hidden" pathway to design chiral materials by intentionally mismatching the symmetry-breaking directions of magnetic and structural order parameters.
