@@ -1620,7 +1620,7 @@ class ChiralTransitionFinder:
         
         k_points = star if star is not None else [qpoint_prim]
         for k_pt in k_points:
-            k_conv = np.dot(P_inv, k_pt)
+            k_conv = np.dot(P.T, k_pt)
             for i, x in enumerate(k_conv):
                 if np.isclose(x, 0, atol=1e-5):
                     continue
@@ -1902,12 +1902,12 @@ class ChiralTransitionFinder:
             irr_basis = self._get_irreptables_basis()
             if irr_basis == "primitive":
                 qp_prim = qp
-                _, P_inv = self._get_transformation_matrices()
-                qp_conv = np.dot(P_inv, qp_prim)
+                P, P_inv = self._get_transformation_matrices()
+                qp_conv = np.dot(P.T, qp_prim)
             else:
                 qp_conv = qp
-                P, _ = self._get_transformation_matrices()
-                qp_prim = np.dot(P, qp_conv)
+                _, P_inv = self._get_transformation_matrices()
+                qp_prim = np.dot(P_inv.T, qp_conv)
             
             try:
                 irreps = self.get_irreps_at_qpoint(qp, qp_label)

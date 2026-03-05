@@ -110,12 +110,12 @@ def main() -> None:
     irr = IrRepsAnaddb(
         phbst_fname=args.phbst_fname,
         ind_q=args.ind_q,
-        is_little_cogroup=args.is_little_cogroup,
+        #is_little_cogroup=args.is_little_cogroup,
         symprec=args.symprec,
         degeneracy_tolerance=args.degeneracy_tolerance,
         log_level=args.log_level,
-        backend=args.backend,
-        both_labels=args.both_labels,
+        #backend=args.backend,
+        #both_labels=args.both_labels,
     )
     irr.run(kpname=args.kpname)
 
@@ -289,12 +289,12 @@ def main_phonopy() -> None:
         irr = IrRepsPhonopy(
             phonopy_params=args.phonopy_params,
             qpoint=k,
-            is_little_cogroup=args.is_little_cogroup,
+            #is_little_cogroup=args.is_little_cogroup,
             symprec=symprec,
             degeneracy_tolerance=args.degeneracy_tolerance,
             log_level=args.log_level,
-            backend="irrep",
-            both_labels=is_gamma,  # Dual labels only at Gamma
+            #backend="irrep",
+            #both_labels=is_gamma,  # Dual labels only at Gamma
         )
         irr.run(kpname=kpname)
         
