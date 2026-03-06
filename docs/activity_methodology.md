@@ -1,6 +1,6 @@
 # Methodology for Identification of IR and Raman Activity
 
-In the harmonic approximation, the vibrational modes of a crystal at the Brillouin zone center ($\Gamma$ point) can be classified according to the irreducible representations (irreps) of the crystal's point group $P$. This document describes the group-theoretical method implemented in `anaddb_irreps` to determine the spectroscopic activity of these modes.
+In the harmonic approximation, the vibrational modes of a crystal at the Brillouin zone center ($\Gamma$ point) can be classified according to the irreducible representations (irreps) of the crystal's point group $P$. This document describes the group-theoretical method implemented in `symphon` to determine the spectroscopic activity of these modes.
 
 ## 1. Theoretical Framework
 
@@ -22,7 +22,7 @@ $$\chi_{\alpha}(R) = \frac{1}{2} \left( [\chi_{V}(R)]^2 + \chi_{V}(R^2) \right)$
 
 ## 2. Computational Implementation Steps
 
-The `anaddb_irreps` package automates the spectroscopic identification through the following algorithmic steps:
+The `symphon` package automates the spectroscopic identification through the following algorithmic steps:
 
 1.  **Symmetry Analysis**: The tool identifies the point group $P$ of the crystal structure at the $\Gamma$ point using `spglib`. For `TmFeO3`, this is the centrosymmetric orthorhombic group $mmm$ ($D_{2h}$).
 2.  **Character Table Retrieval**: The character table for the identified point group is retrieved from the internal database (via `phonopy`). This table contains the characters $\chi_i(R)$ for each irreducible representation $\Gamma_i$.

@@ -13,13 +13,13 @@ class TestSohnckeNumbers:
 
     def test_sohncke_count(self):
         """Verify exactly 65 Sohncke groups."""
-        from anaddb_irreps.chiral_transitions import get_sohncke_numbers
+        from symphon.chiral_transitions import get_sohncke_numbers
         numbers = get_sohncke_numbers()
         assert len(numbers) == 65
 
     def test_sohncke_verification(self):
         """Verify cached Sohncke numbers match algorithmic derivation."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             _SOHNCKE_NUMBERS,
             _get_sohncke_numbers_from_spglib
         )
@@ -28,7 +28,7 @@ class TestSohnckeNumbers:
 
     def test_is_sohncke_known_values(self):
         """Test is_sohncke against known values."""
-        from anaddb_irreps.chiral_transitions import is_sohncke
+        from symphon.chiral_transitions import is_sohncke
 
         assert is_sohncke(1) is True
         assert is_sohncke(76) is True
@@ -40,7 +40,7 @@ class TestSohnckeNumbers:
 
     def test_sohncke_numbers_sorted(self):
         """Test that get_sohncke_numbers returns sorted list."""
-        from anaddb_irreps.chiral_transitions import get_sohncke_numbers
+        from symphon.chiral_transitions import get_sohncke_numbers
         numbers = get_sohncke_numbers()
         assert numbers == sorted(numbers)
 
@@ -50,7 +50,7 @@ class TestSohnckeClassification:
 
     def test_class_ii_identification(self):
         """Test Class II (enantiomorphous) identification."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             get_sohncke_class,
             SohnckeClass,
         )
@@ -61,7 +61,7 @@ class TestSohnckeClassification:
 
     def test_class_iii_identification(self):
         """Test Class III (chiral-supporting) identification."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             get_sohncke_class,
             SohnckeClass,
         )
@@ -72,7 +72,7 @@ class TestSohnckeClassification:
 
     def test_class_i_identification(self):
         """Test Class I (achiral) identification."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             get_sohncke_class,
             SohnckeClass,
         )
@@ -83,7 +83,7 @@ class TestSohnckeClassification:
 
     def test_enantiomorph_partner(self):
         """Test enantiomorph partner lookup."""
-        from anaddb_irreps.chiral_transitions import get_enantiomorph_partner
+        from symphon.chiral_transitions import get_enantiomorph_partner
 
         assert get_enantiomorph_partner(76) == 78
         assert get_enantiomorph_partner(78) == 76
@@ -92,7 +92,7 @@ class TestSohnckeClassification:
 
     def test_no_enantiomorph_partner(self):
         """Test that Class III groups have no enantiomorph partner."""
-        from anaddb_irreps.chiral_transitions import get_enantiomorph_partner
+        from symphon.chiral_transitions import get_enantiomorph_partner
 
         assert get_enantiomorph_partner(1) is None
         assert get_enantiomorph_partner(75) is None
@@ -104,7 +104,7 @@ class TestImproperOperations:
 
     def test_inversion_detection(self):
         """Test inversion detection."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             classify_improper_operation,
             ImproperOperationType
         )
@@ -115,7 +115,7 @@ class TestImproperOperations:
 
     def test_mirror_detection(self):
         """Test mirror detection."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             classify_improper_operation,
             ImproperOperationType
         )
@@ -126,7 +126,7 @@ class TestImproperOperations:
 
     def test_proper_rotation(self):
         """Test that proper rotations return None."""
-        from anaddb_irreps.chiral_transitions import classify_improper_operation
+        from symphon.chiral_transitions import classify_improper_operation
 
         rotation = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]], dtype=int)
         result = classify_improper_operation(rotation)
@@ -134,7 +134,7 @@ class TestImproperOperations:
 
     def test_rotoinversion_detection(self):
         """Test rotoinversion detection."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             classify_improper_operation,
             ImproperOperationType
         )
@@ -145,7 +145,7 @@ class TestImproperOperations:
 
     def test_has_improper_operations(self):
         """Test has_improper_operations function."""
-        from anaddb_irreps.chiral_transitions import has_improper_operations
+        from symphon.chiral_transitions import has_improper_operations
 
         rotations_with_inversion = np.array([
             np.eye(3, dtype=int),
@@ -165,14 +165,14 @@ class TestOPDConversion:
 
     def test_opd_single_element(self):
         """Test OPD with single element."""
-        from anaddb_irreps.chiral_transitions import opd_to_symbolic
+        from symphon.chiral_transitions import opd_to_symbolic
 
         result = opd_to_symbolic(np.array([1]))
         assert 'a' in result
 
     def test_opd_with_zeros(self):
         """Test OPD with zeros."""
-        from anaddb_irreps.chiral_transitions import opd_to_symbolic
+        from symphon.chiral_transitions import opd_to_symbolic
 
         result = opd_to_symbolic(np.array([1, 0, 0]))
         assert 'a' in result
@@ -180,14 +180,14 @@ class TestOPDConversion:
 
     def test_opd_all_zeros(self):
         """Test OPD with all zeros."""
-        from anaddb_irreps.chiral_transitions import opd_to_symbolic
+        from symphon.chiral_transitions import opd_to_symbolic
 
         result = opd_to_symbolic(np.array([0, 0, 0]))
         assert result == '(0,0,0)'
 
     def test_opd_negative(self):
         """Test OPD with negative coefficient."""
-        from anaddb_irreps.chiral_transitions import opd_to_symbolic
+        from symphon.chiral_transitions import opd_to_symbolic
 
         result = opd_to_symbolic(np.array([-1, 0, 0]))
         assert '-a' in result
@@ -198,7 +198,7 @@ class TestSpaceGroupInfo:
 
     def test_spacegroup_info_creation(self):
         """Test SpaceGroupInfo creation."""
-        from anaddb_irreps.chiral_transitions import SpaceGroupInfo
+        from symphon.chiral_transitions import SpaceGroupInfo
 
         info = SpaceGroupInfo(
             number=1,
@@ -215,7 +215,7 @@ class TestSpaceGroupInfo:
 
     def test_spacegroup_info_sohncke_properties(self):
         """Test SpaceGroupInfo Sohncke-related properties."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             SpaceGroupInfo,
             SohnckeClass
         )
@@ -238,7 +238,7 @@ class TestChiralTransition:
 
     def test_chiral_transition_creation(self):
         """Test ChiralTransition creation."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             ChiralTransition,
             OrderParameterDirection,
             SohnckeClass
@@ -281,28 +281,28 @@ class TestChiralTransitionFinder:
 
     def test_finder_creation(self):
         """Test ChiralTransitionFinder creation."""
-        from anaddb_irreps.chiral_transitions import ChiralTransitionFinder
+        from symphon.chiral_transitions import ChiralTransitionFinder
 
         finder = ChiralTransitionFinder(136)
         assert finder.spg_number == 136
 
     def test_parent_chiral_detection(self):
         """Test that chiral parents are detected."""
-        from anaddb_irreps.chiral_transitions import ChiralTransitionFinder
+        from symphon.chiral_transitions import ChiralTransitionFinder
 
         finder = ChiralTransitionFinder(76)
         assert finder.is_parent_chiral is True
 
     def test_parent_achiral_detection(self):
         """Test that achiral parents are detected."""
-        from anaddb_irreps.chiral_transitions import ChiralTransitionFinder
+        from symphon.chiral_transitions import ChiralTransitionFinder
 
         finder = ChiralTransitionFinder(136)
         assert finder.is_parent_chiral is False
 
     def test_spacegroup_info_loading(self):
         """Test that space group info is loaded correctly."""
-        from anaddb_irreps.chiral_transitions import ChiralTransitionFinder
+        from symphon.chiral_transitions import ChiralTransitionFinder
 
         finder = ChiralTransitionFinder(136)
         info = finder.spacegroup_info
@@ -312,7 +312,7 @@ class TestChiralTransitionFinder:
 
     def test_centrosymmetric_detection(self):
         """Test centrosymmetric detection."""
-        from anaddb_irreps.chiral_transitions import ChiralTransitionFinder
+        from symphon.chiral_transitions import ChiralTransitionFinder
 
         finder = ChiralTransitionFinder(136)
         assert finder.is_parent_centrosymmetric is True
@@ -322,7 +322,7 @@ class TestChiralTransitionFinder:
 
     def test_chiral_parent_raises_error(self):
         """Test that chiral parents raise ValueError."""
-        from anaddb_irreps.chiral_transitions import ChiralTransitionFinder
+        from symphon.chiral_transitions import ChiralTransitionFinder
 
         finder = ChiralTransitionFinder(76)
         with pytest.raises(ValueError, match="already chiral"):
@@ -330,7 +330,7 @@ class TestChiralTransitionFinder:
 
     def test_invalid_spg_number(self):
         """Test that invalid space group numbers raise ValueError."""
-        from anaddb_irreps.chiral_transitions import ChiralTransitionFinder
+        from symphon.chiral_transitions import ChiralTransitionFinder
 
         with pytest.raises(ValueError):
             ChiralTransitionFinder(0)
@@ -340,7 +340,7 @@ class TestChiralTransitionFinder:
 
     def test_get_proper_subgroup_info_fast(self):
         """Test get_proper_subgroup_info returns Sohncke daughter."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             ChiralTransitionFinder,
             is_sohncke,
         )
@@ -356,7 +356,7 @@ class TestChiralTransitionFinder:
 
     def test_get_proper_subgroup_info_non_centrosymmetric(self):
         """Test get_proper_subgroup_info for non-centrosymmetric parent."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             ChiralTransitionFinder,
             is_sohncke,
         )
@@ -373,14 +373,14 @@ class TestReporting:
 
     def test_format_transition_table_empty(self):
         """Test format_transition_table with empty list."""
-        from anaddb_irreps.chiral_transitions import format_transition_table
+        from symphon.chiral_transitions import format_transition_table
 
         result = format_transition_table([])
         assert "No transitions" in result
 
     def test_format_lost_operations_detail(self):
         """Test format_lost_operations_detail."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             format_lost_operations_detail,
             ChiralTransition,
             OrderParameterDirection,
@@ -433,7 +433,7 @@ class TestIntegration:
 
     def test_sg136_finds_transitions(self):
         """Test SG 136 (P4_2/mnm) chiral transition search."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             ChiralTransitionFinder,
             is_sohncke,
         )
@@ -448,7 +448,7 @@ class TestIntegration:
 
     def test_transitions_have_lost_operations(self):
         """Test that chiral transitions (when found) have lost improper operations."""
-        from anaddb_irreps.chiral_transitions import ChiralTransitionFinder, is_sohncke
+        from symphon.chiral_transitions import ChiralTransitionFinder, is_sohncke
 
         finder = ChiralTransitionFinder(136)
         transitions = finder.find_chiral_transitions()
@@ -463,7 +463,7 @@ class TestIntegration:
 
     def test_format_table_with_real_transitions(self):
         """Test format_transition_table with real transitions."""
-        from anaddb_irreps.chiral_transitions import (
+        from symphon.chiral_transitions import (
             ChiralTransitionFinder,
             format_transition_table,
         )

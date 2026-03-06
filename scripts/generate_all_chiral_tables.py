@@ -13,7 +13,7 @@ SCRIPT_DIR = Path(__file__).parent
 PROJECT_DIR = SCRIPT_DIR.parent.parent
 OUTPUT_DIR = PROJECT_DIR / "chiral_transition_tables"
 
-from anaddb_irreps.chiral_transitions import (
+from symphon.chiral_transitions import (
     ChiralTransitionFinder,
     is_sohncke,
     format_transition_table,

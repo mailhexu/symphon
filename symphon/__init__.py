@@ -1,11 +1,12 @@
 try:
-    from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, print_irreps, print_irreps_phonopy
+    from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, print_irreps, print_irreps_phonopy, find_highsym_qpoints_in_phbst
 except (ImportError, ModuleNotFoundError):
     # phonopy or spglib version conflict
     IrRepsAnaddb = None
     IrRepsPhonopy = None
     print_irreps = None
     print_irreps_phonopy = None
+    find_highsym_qpoints_in_phbst = None
 
 from .chiral_transitions import (
     is_sohncke,
@@ -29,6 +30,7 @@ __all__ = [
     "IrRepsAnaddb",
     "IrRepsPhonopy",
     "print_irreps",
+    "find_highsym_qpoints_in_phbst",
     "is_sohncke",
     "get_sohncke_numbers",
     "get_sohncke_class",

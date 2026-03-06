@@ -1,4 +1,4 @@
-# anaddb_irreps
+# symphon
 
 A simple wrapper of the phonopy irreps module for finding irreducible representations of phonon modes in ABINIT's anaddb output.
 
@@ -20,24 +20,24 @@ A simple wrapper of the phonopy irreps module for finding irreducible representa
 
 Install from PyPI:
 ```bash
-pip install anaddb_irreps
+pip install symphon
 ```
 
 ### Optional Dependencies
 
 For **non-Gamma phonons** (k-points other than Γ), install with the `irrep` backend:
 ```bash
-pip install "anaddb_irreps[irrep]"
+pip install "symphon[irrep]"
 ```
 
 For **ABINIT support** (reading PHBST NetCDF files), install with the `abipy` optional dependency:
 ```bash
-pip install "anaddb_irreps[abipy]"
+pip install "symphon[abipy]"
 ```
 
 To install all optional dependencies:
 ```bash
-pip install "anaddb_irreps[irrep,abipy]"
+pip install "symphon[irrep,abipy]"
 ```
 
 ## Documentation
@@ -51,7 +51,7 @@ pip install "anaddb_irreps[irrep,abipy]"
 ### Python API
 
 ```python
-from anaddb_irreps import print_irreps_phonopy
+from symphon import print_irreps_phonopy
 
 # Analyze Gamma point
 print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0])

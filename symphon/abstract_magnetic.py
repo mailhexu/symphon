@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 import spglib
 from spgrep import get_spacegroup_irreps_from_primitive_symmetry
 from spgrep_modulation.isotropy import IsotropyEnumerator
-from anaddb_irreps.chiral_transitions import ChiralTransitionFinder
+from symphon.chiral_transitions import ChiralTransitionFinder
 
 class AbstractMagneticTransitionFinder:
     """

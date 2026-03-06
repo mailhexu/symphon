@@ -1,6 +1,6 @@
 # Usage Guide
 
-This guide provides detailed usage instructions for `anaddb_irreps` including both Python API and command-line interfaces.
+This guide provides detailed usage instructions for `symphon` including both Python API and command-line interfaces.
 
 ## Table of Contents
 
@@ -33,7 +33,7 @@ Run anaddb to get the PHBST file with phonon frequencies and eigenvectors. See e
 #### Basic Usage
 
 ```python
-from anaddb_irreps import print_irreps
+from symphon import print_irreps
 
 # Simple usage
 print_irreps("run_PHBST.nc", ind_q=0)
@@ -42,7 +42,7 @@ print_irreps("run_PHBST.nc", ind_q=0)
 #### With Options
 
 ```python
-from anaddb_irreps import print_irreps
+from symphon import print_irreps
 
 print_irreps(
     "run_PHBST.nc",
@@ -64,7 +64,7 @@ If you already have a phonopy params/YAML file (e.g. `phonopy_params.yaml` or `p
 #### Basic Usage
 
 ```python
-from anaddb_irreps import print_irreps_phonopy
+from symphon import print_irreps_phonopy
 
 # Simple usage at Gamma point
 print_irreps_phonopy("phonopy_params.yaml", qpoint=[0.0, 0.0, 0.0])
@@ -73,7 +73,7 @@ print_irreps_phonopy("phonopy_params.yaml", qpoint=[0.0, 0.0, 0.0])
 #### With Options
 
 ```python
-from anaddb_irreps import print_irreps_phonopy
+from symphon import print_irreps_phonopy
 
 # For non-Gamma points using irrep backend
 print_irreps_phonopy(
@@ -107,7 +107,7 @@ print_irreps_phonopy(
 
 - **phonopy_params** (str, required): Path to phonopy params/YAML file
 - **qpoint** (sequence of 3 floats, required): q-point in fractional coordinates
-- **symprec** (float or None): Symmetry precision for structure analysis. If `None` (or omitted), anaddb_irreps will try to use the symmetry tolerance recorded in the phonopy file (e.g., `phonopy.symmetry_tolerance` in the YAML), falling back to `1e-5` when not available.
+- **symprec** (float or None): Symmetry precision for structure analysis. If `None` (or omitted), symphon will try to use the symmetry tolerance recorded in the phonopy file (e.g., `phonopy.symmetry_tolerance` in the YAML), falling back to `1e-5` when not available.
 - **degeneracy_tolerance** (float): Frequency tolerance for degeneracy detection (default: 1e-4)
 - **is_little_cogroup** (bool): Use little co-group setting (default: False)
 - **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
@@ -204,7 +204,7 @@ phonopy-irreps \
 
 - `-p`, `--params` (required): Path to phonopy params/YAML file
 - `--qpoint` (required): Three floats for q-point in fractional coordinates
-- `-s`, `--symprec`: Override symmetry precision. If omitted, anaddb_irreps will try to use the symmetry tolerance stored in the phonopy file, falling back to `1e-5`.
+- `-s`, `--symprec`: Override symmetry precision. If omitted, symphon will try to use the symmetry tolerance stored in the phonopy file, falling back to `1e-5`.
 - `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
 - `-l`, `--is-little-cogroup`: Use little co-group setting
 - `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)

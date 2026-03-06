@@ -20,7 +20,7 @@ cd 1_basic_anaddb
 
 Or directly:
 ```bash
-anaddb-irreps --phbst MoS2_1T/run_PHBST.nc --q-index 0
+symphon anaddb-irreps --phbst MoS2_1T/run_PHBST.nc --q-index 0
 ```
 
 ### Python API

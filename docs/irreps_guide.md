@@ -1,6 +1,6 @@
 # Irreducible Representation Labeling Guide
 
-This guide describes the mathematical foundations and usage of the irrep labeling capabilities in `anaddb_irreps`, particularly for non-Gamma ($q \neq 0$) phonons.
+This guide describes the mathematical foundations and usage of the irrep labeling capabilities in `symphon`, particularly for non-Gamma ($q \neq 0$) phonons.
 
 ## 1. Notation and Labels
 

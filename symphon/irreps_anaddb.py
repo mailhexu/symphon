@@ -3,7 +3,7 @@ from scipy.constants import c, h, e, tera
 from phonopy.phonon.irreps import IrReps, IrRepLabels
 from phonopy.structure.symmetry import Symmetry
 from phonopy.phonon.character_table import character_table
-from anaddb_irreps.abipy_io import read_phbst_freqs_and_eigvecs, ase_atoms_to_phonopy_atoms
+from symphon.abipy_io import read_phbst_freqs_and_eigvecs, ase_atoms_to_phonopy_atoms
 from phonopy.phonon.degeneracy import degenerate_sets as get_degenerate_sets
 from phonopy.structure.cells import is_primitive_cell
 from phonopy import load as phonopy_load
@@ -195,16 +195,20 @@ class ReportingMixin:
                 print(f"Warning: Failed to compute chiral transitions: {e}")
             self._chiral_transitions_map = {}
 
-    def format_summary_table(self, include_header: bool = True, include_symmetry: bool = True, include_qpoint_cols: bool = True) -> str:
+    def format_summary_table(self, include_header: bool = True, include_symmetry: bool = True, include_qpoint_cols: bool = True, show_chiral: bool = False) -> str:
         """Format the summary table as a human-readable string.
         
         Args:
             include_header: Whether to include column headers
             include_symmetry: Whether to include q-point, space group, and point group info
             include_qpoint_cols: Whether to include qx, qy, qz columns in the table
+            show_chiral: Whether to include OPD and daughter SG chiral transition columns
         """
         summary = self.get_summary_table()
-        show_chiral = any(row.get("opd") != "-" or row.get("daughter_sg") != "-" for row in summary)
+        if not show_chiral:
+            show_chiral_cols = False
+        else:
+            show_chiral_cols = any(row.get("opd") != "-" or row.get("daughter_sg") != "-" for row in summary)
 
         show_activity = True
         show_both = getattr(self, "_irrep_labels_bcs", None) is not None
@@ -240,7 +244,7 @@ class ReportingMixin:
                 else:
                     header = "# band  freq(THz)   freq(cm-1)   label"
             
-            if show_chiral:
+            if show_chiral_cols:
                 header += "   OPD          Daughter SG"
             lines.append(header)
 
@@ -304,7 +308,7 @@ class ReportingMixin:
                         f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}"
                     )
             
-            if show_chiral:
+            if show_chiral_cols:
                 opd_str = row.get("opd", "-")
                 daughter_str = row.get("daughter_sg", "-")
                 # Add enough padding so it aligns with the header
@@ -445,7 +449,10 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
                 print(f"Warning: Failed to compute BCS labels: {e}")
             self._irrep_labels_bcs = [None] * len(self._freqs)
 
-        self._compute_chiral_transitions()
+        if getattr(self, "_compute_chiral", False):
+            self._compute_chiral_transitions()
+        else:
+            self._chiral_transitions_map = {}
         return True
 
 
@@ -870,6 +877,47 @@ def get_all_irreps_phonopy(
         results[label] = irr
         
     return results
+
+def find_highsym_qpoints_in_phbst(
+    phbst_fname: str,
+    symprec: float = 1e-5,
+) -> list[dict]:
+    """Find high-symmetry q-points that are present in a PHBST file.
+
+    Reads the q-point list from the PHBST file, computes the theoretical
+    high-symmetry points for the structure, and returns only those that
+    match a q-point in the file.
+
+    Returns:
+        List of dicts with keys:
+        - ind_q: index of the q-point in the PHBST file (0-based)
+        - label: BCS label (e.g. 'GM', 'X')
+        - qpoint: fractional coordinates in the input cell basis
+    """
+    atoms, qpoints, _freqs, _eig_vecs = read_phbst_freqs_and_eigvecs(phbst_fname)
+    primitive = ase_atoms_to_phonopy_atoms(atoms)
+
+    try:
+        special_qs = get_special_qpoints(primitive, symprec=symprec)
+    except Exception:
+        special_qs = []
+
+    matched = []
+    for sq in special_qs:
+        q_ref = np.array(sq["qpoint_input"])
+        for ind_q, q in enumerate(qpoints):
+            diff = np.array(q) - q_ref
+            diff -= np.rint(diff)
+            if np.all(np.abs(diff) < symprec):
+                matched.append({
+                    "ind_q": ind_q,
+                    "label": sq["label"],
+                    "qpoint": q.tolist(),
+                })
+                break  # each special point matched at most once
+
+    return matched
+
 
 def get_all_irreps_anaddb(
     phbst_fname: str,

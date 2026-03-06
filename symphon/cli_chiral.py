@@ -29,7 +29,7 @@ import argparse
 import sys
 from typing import Optional
 
-from anaddb_irreps.chiral_transitions import (
+from symphon.chiral_transitions import (
     ChiralTransitionFinder,
     format_transition_table,
     is_sohncke,
@@ -67,7 +67,7 @@ def print_transitions(
         Number of transitions found
     """
     try:
-        from anaddb_irreps.chiral_transitions import HAS_SPGREP, HAS_SPGREP_MODULATION
+        from symphon.chiral_transitions import HAS_SPGREP, HAS_SPGREP_MODULATION
         if not HAS_SPGREP or not HAS_SPGREP_MODULATION:
             print("Error: 'spgrep' and 'spgrep-modulation' are required for chiral transition analysis.", file=sys.stderr)
             print("Install them with: pip install spgrep spgrep-modulation", file=sys.stderr)
@@ -152,7 +152,7 @@ def print_summary_for_all(use_cache: bool = True, refresh: bool = False) -> None
         try:
             finder = ChiralTransitionFinder(spg_num)
             
-            from anaddb_irreps.chiral_transitions import HAS_SPGREP
+            from symphon.chiral_transitions import HAS_SPGREP
             if HAS_SPGREP:
                 transitions = finder.find_chiral_transitions()
             else:

@@ -1,19 +1,19 @@
-"""Command-line interface for anaddb_irreps.
+"""Command-line interface for symphon.
 
 Provides a concise irreps summary by default and optional verbose output.
 """
 
 import argparse
-from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, print_irreps_phonopy
+from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, find_highsym_qpoints_in_phbst, print_irreps_phonopy
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for the anaddb_irreps CLI."""
+    """Parse command-line arguments for the symphon CLI."""
     parser = argparse.ArgumentParser(
         prog="anaddb-irreps",
         description=(
             "Compute irreducible representations of phonon modes from anaddb "
-            "PHBST output using anaddb_irreps (phonopy wrapper)."
+            "PHBST output using symphon (phonopy wrapper)."
         ),
     )
 
@@ -29,8 +29,11 @@ def parse_args() -> argparse.Namespace:
         "--q-index",
         dest="ind_q",
         type=int,
-        required=True,
-        help="Index of q-point in PHBST file (0-based)",
+        default=None,
+        help=(
+            "Index of q-point in PHBST file (0-based). "
+            "If omitted, all high-symmetry q-points found in the file are analyzed."
+        ),
     )
     parser.add_argument(
         "-s",
@@ -81,58 +84,98 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "-b",
-        "--backend",
-        type=str,
-        default="phonopy",
-        choices=["phonopy", "irrep"],
-        help="Backend driver to use for irrep identification (default: phonopy)",
-    )
-    parser.add_argument(
         "-k",
         "--kpname",
         type=str,
         default=None,
-        help="k-point name (e.g. GM, X, M) used by 'irrep' backend",
-    )
-    parser.add_argument(
-        "--both-labels",
-        action="store_true",
-        help="For Gamma point: show both phonopy (Mulliken) and irrep (BCS) labels",
+        help=(
+            "k-point name (e.g. GM, X, M). Used only with -q; "
+            "in auto-scan mode the label is determined automatically."
+        ),
     )
     return parser.parse_args()
 
 
 def main() -> None:
-    """Entry point for the anaddb_irreps CLI."""
+    """Entry point for the anaddb-irreps CLI."""
     args = parse_args()
 
-    irr = IrRepsAnaddb(
-        phbst_fname=args.phbst_fname,
-        ind_q=args.ind_q,
-        #is_little_cogroup=args.is_little_cogroup,
-        symprec=args.symprec,
-        degeneracy_tolerance=args.degeneracy_tolerance,
-        log_level=args.log_level,
-        #backend=args.backend,
-        #both_labels=args.both_labels,
-    )
-    irr.run(kpname=args.kpname)
+    if args.ind_q is not None:
+        # ── Single q-point mode ──────────────────────────────────────────────
+        irr = IrRepsAnaddb(
+            phbst_fname=args.phbst_fname,
+            ind_q=args.ind_q,
+            symprec=args.symprec,
+            degeneracy_tolerance=args.degeneracy_tolerance,
+            log_level=args.log_level,
+        )
+        irr.run(kpname=args.kpname)
+        print(irr.format_summary_table())
 
-    # 1) Always show concise summary table (including IR/Raman activity)
-    print(irr.format_summary_table())
+        if args.show_verbose or args.verbose_file:
+            verbose_text = irr.get_verbose_output()
+            if args.verbose_file:
+                with open(args.verbose_file, "w", encoding="utf-8") as fh:
+                    fh.write(verbose_text)
+            elif args.show_verbose:
+                print()
+                print("# Verbose irreps output")
+                print(verbose_text, end="")
 
-    # 2) Optional verbose output
-    if args.show_verbose or args.verbose_file:
-        verbose_text = irr.get_verbose_output()
+    else:
+        # ── Auto high-symmetry scan mode ─────────────────────────────────────
+        matched = find_highsym_qpoints_in_phbst(
+            args.phbst_fname,
+            symprec=args.symprec,
+        )
 
+        if not matched:
+            print(
+                "No high-symmetry q-points found in the PHBST file. "
+                "Use -q to specify a q-point index explicitly."
+            )
+            return
+
+        print(f"Found {len(matched)} high-symmetry q-point(s) in {args.phbst_fname}:")
+        for m in matched:
+            q = m["qpoint"]
+            print(f"  [{q[0]:.4f}, {q[1]:.4f}, {q[2]:.4f}]  label={m['label']}  ind_q={m['ind_q']}")
+        print()
+
+        verbose_file_handle = None
         if args.verbose_file:
-            with open(args.verbose_file, "w", encoding="utf-8") as fh:
-                fh.write(verbose_text)
-        elif args.show_verbose:
-            print()
-            print("# Verbose irreps output")
-            print(verbose_text, end="")
+            verbose_file_handle = open(args.verbose_file, "w", encoding="utf-8")
+
+        try:
+            for m in matched:
+                irr = IrRepsAnaddb(
+                    phbst_fname=args.phbst_fname,
+                    ind_q=m["ind_q"],
+                    symprec=args.symprec,
+                    degeneracy_tolerance=args.degeneracy_tolerance,
+                    log_level=args.log_level,
+                )
+                irr.run(kpname=m["label"])
+
+                q = m["qpoint"]
+                print(f"# {m['label']} point  (ind_q={m['ind_q']})")
+                print(f"# k = [{q[0]:.4f}, {q[1]:.4f}, {q[2]:.4f}]")
+                print("=" * 60)
+                print(irr.format_summary_table(include_symmetry=False, include_qpoint_cols=False))
+                print()
+
+                if args.show_verbose or args.verbose_file:
+                    verbose_text = irr.get_verbose_output()
+                    if verbose_file_handle:
+                        verbose_file_handle.write(f"# {m['label']} point\n")
+                        verbose_file_handle.write(verbose_text)
+                    elif args.show_verbose:
+                        print(f"# Verbose output for {m['label']}")
+                        print(verbose_text, end="")
+                        print()
+        finally:
+            if verbose_file_handle:
+                verbose_file_handle.close()
 
 
 def parse_args_phonopy() -> argparse.Namespace:
@@ -164,7 +207,7 @@ def parse_args_phonopy() -> argparse.Namespace:
         default=None,
         help=(
             "Override symmetry precision used for structure analysis. "
-            "If omitted, anaddb_irreps will try to use the "
+            "If omitted, symphon will try to use the "
             "symmetry tolerance stored in the phonopy file, "
             "falling back to 1e-5."
         ),
@@ -208,6 +251,14 @@ def parse_args_phonopy() -> argparse.Namespace:
         help=(
             "If set, write the verbose irreps output to this file instead of "
             "stdout (only used when --show-verbose is given)."
+        ),
+    )
+    parser.add_argument(
+        "--chiral",
+        action="store_true",
+        help=(
+            "Compute and display possible chiral symmetry-breaking transitions "
+            "for each mode (OPD and daughter space group columns)."
         ),
     )
 
@@ -296,6 +347,7 @@ def main_phonopy() -> None:
             #backend="irrep",
             #both_labels=is_gamma,  # Dual labels only at Gamma
         )
+        irr._compute_chiral = args.chiral
         irr.run(kpname=kpname)
         
         # Print k-point header with coordinate mapping
@@ -310,7 +362,7 @@ def main_phonopy() -> None:
             print(f"# k_BCS  = [{q_bcs[0]:.4f}, {q_bcs[1]:.4f}, {q_bcs[2]:.4f}]  (BCS label: {bcs_label})")
         
         print("=" * 60)
-        print(irr.format_summary_table(include_symmetry=False, include_qpoint_cols=False))
+        print(irr.format_summary_table(include_symmetry=False, include_qpoint_cols=False, show_chiral=args.chiral))
         print()  # Add blank line between k-points
         
         # Optional verbose output

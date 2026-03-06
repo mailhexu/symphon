@@ -17,7 +17,7 @@ This directory is prepared for advanced examples showing:
 For now, you can use the basic phonopy-irreps CLI:
 
 ```bash
-phonopy-irreps --params TmFeO3_phonopy_params.yaml
+symphon phonopy-irreps --params TmFeO3_phonopy_params.yaml
 ```
 
 ## Notes

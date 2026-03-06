@@ -1,6 +1,6 @@
-# anaddb_irreps Examples
+# symphon Examples
 
-This directory contains organized examples demonstrating different features of `anaddb_irreps`.
+This directory contains organized examples demonstrating different features of `symphon`.
 
 ## Directory Structure
 
@@ -58,27 +58,28 @@ This single command automatically analyzes **all** high-symmetry points!
 | **Input file** | PHBST NetCDF | Phonopy YAML/params |
 | **k-point specification** | Index-based | Automatic discovery |
 | **Best for** | ABINIT workflows | General phonopy use |
+| **CLI command** | `symphon anaddb-irreps` | `symphon phonopy-irreps` |
 
 ## Requirements
 
 **Basic features:**
 ```bash
-pip install anaddb_irreps
+pip install symphon
 ```
 
 **Auto-discovery & non-Gamma points:**
 ```bash
-pip install "anaddb_irreps[irrep]"
+pip install "symphon[irrep]"
 ```
 
 **ABINIT PHBST support:**
 ```bash
-pip install "anaddb_irreps[abipy]"
+pip install "symphon[abipy]"
 ```
 
 **Everything:**
 ```bash
-pip install "anaddb_irreps[irrep,abipy]"
+pip install "symphon[irrep,abipy]"
 ```
 
 ## What's New

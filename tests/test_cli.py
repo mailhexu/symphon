@@ -23,7 +23,7 @@ def run_phonopy_irreps(yaml_file: Path) -> str:
     import sys
     result = subprocess.run(
         [sys.executable, "-c", 
-         f"from anaddb_irreps.cli import main_phonopy; "
+         f"from symphon.cli import main_phonopy; "
          f"import sys; sys.argv = ['phonopy-irreps', '-p', '{yaml_file}']; "
          f"main_phonopy()"],
         capture_output=True,
@@ -99,7 +99,7 @@ def test_phonopy_irreps_output(yaml_file: str, request):
 def test_phonopy_irreps_help():
     """Test that help command works."""
     result = subprocess.run(
-        [sys.executable, "-m", "anaddb_irreps.cli", "--help"],
+        [sys.executable, "-m", "symphon.cli", "--help"],
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,

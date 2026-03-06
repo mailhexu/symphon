@@ -210,7 +210,7 @@ For 3D irreps (rare in phonons, more common with spin-orbit coupling):
 
 ## Implementation Location
 
-**File**: `anaddb_irreps/irrep_backend.py`
+**File**: `symphon/irrep_backend.py`
 
 **Key sections:**
 1. **Detection** (lines 108-121): Check if only multi-dim irreps exist
@@ -229,7 +229,7 @@ For 3D irreps (rare in phonons, more common with spin-orbit coupling):
 
 **Example run:**
 ```bash
-cd /path/to/anaddb_irreps
+cd /path/to/symphon
 python agent_files/debug/irrep_matching/test_all_kpoints.py
 ```
 

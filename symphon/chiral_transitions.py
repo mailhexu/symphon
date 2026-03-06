@@ -1728,7 +1728,7 @@ class ChiralTransitionFinder:
                         )
                         if sg_type is not None:
                             num = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
-                            from anaddb_irreps.chiral_transitions import is_sohncke
+                            from symphon.chiral_transitions import is_sohncke
                             if is_sohncke(num):
                                 if num > best_num:
                                     best_num = num

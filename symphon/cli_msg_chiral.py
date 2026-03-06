@@ -1,8 +1,8 @@
 import argparse
 import sys
 
-from anaddb_irreps.msg_chiral import identify_msg_chirality
-from anaddb_irreps.chiral_transitions import SohnckeClass
+from symphon.msg_chiral import identify_msg_chirality
+from symphon.chiral_transitions import SohnckeClass
 
 def main():
     parser = argparse.ArgumentParser(

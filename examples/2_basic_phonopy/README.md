@@ -20,7 +20,7 @@ cd 2_basic_phonopy
 
 Or directly:
 ```bash
-phonopy-irreps --params BaTiO3_phonopy_params.yaml
+symphon phonopy-irreps --params BaTiO3_phonopy_params.yaml
 ```
 
 This **automatically**:
@@ -75,7 +75,7 @@ q-point: [0.5000, 0.5000, 0.0000]
 
 ## Notes
 
-- **CLI auto-discovery** requires `pip install "anaddb_irreps[irrep]"`
+- **CLI auto-discovery** requires `pip install "symphon[irrep]"`
 - Python API still requires explicit qpoint specification
 - Dual labels (Mulliken + BCS) only shown at Gamma point
 - IR/Raman activity only available at Gamma point

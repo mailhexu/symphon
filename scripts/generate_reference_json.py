@@ -2,7 +2,7 @@
 import json
 import numpy as np
 from pathlib import Path
-from anaddb_irreps.chiral_transitions import ChiralTransitionFinder, get_sohncke_numbers
+from symphon.chiral_transitions import ChiralTransitionFinder, get_sohncke_numbers
 
 def serialize_transition(t):
     # Convert OPD numerical values to real if they are nearly real
@@ -54,7 +54,7 @@ def serialize_transition(t):
 
 def generate_all_transitions(start_sg=1, specific_sgs=None):
     sohncke_set = set(get_sohncke_numbers())
-    output_path = Path("anaddb_irreps/tests/reference_transitions.json")
+    output_path = Path("symphon/tests/reference_transitions.json")
     
     if output_path.exists():
         with open(output_path, "r") as f:
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    output_path = Path("anaddb_irreps/tests/reference_transitions.json")
+    output_path = Path("symphon/tests/reference_transitions.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     if args.force and not args.sg:

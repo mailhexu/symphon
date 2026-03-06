@@ -1,6 +1,6 @@
-# `anaddb_irreps` API Reference
+# `symphon` API Reference
 
-This document provides a detailed overview of the Python API available in the `anaddb_irreps` package. The package is divided into three main modules:
+This document provides a detailed overview of the Python API available in the `symphon` package. The package is divided into three main modules:
 
 1. **Phonon Irreducible Representations** (`irreps_anaddb`): Analyzing phonon modes and assigning irrep labels using outputs from ABINIT/anaddb or directly via Phonopy.
 2. **Chiral Phase Transitions** (`chiral_transitions`): Group-theoretical analysis of displacive phase transitions to determine accessible chiral (Sohncke) space groups.
@@ -106,7 +106,7 @@ Quickly prints the calculated irreps directly to the standard output using a Pho
 Here is a quick example of how to use the single-qpoint and multi-qpoint querying functionalities with the `IrRepsPhonopy` interface:
 
 ```python
-from anaddb_irreps.irreps_anaddb import IrRepsPhonopy, get_all_irreps_phonopy
+from symphon.irreps_anaddb import IrRepsPhonopy, get_all_irreps_phonopy
 
 # 1. Single Q-Point Analysis (Gamma point)
 qpoint_gamma = [0.0, 0.0, 0.0]

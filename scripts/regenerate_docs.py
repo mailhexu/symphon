@@ -15,7 +15,7 @@ from pathlib import Path
 
 def get_sohncke_numbers():
     """Get the set of Sohncke space group numbers."""
-    from anaddb_irreps.chiral_transitions import get_sohncke_numbers
+    from symphon.chiral_transitions import get_sohncke_numbers
     return set(get_sohncke_numbers())
 
 

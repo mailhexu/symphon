@@ -10,7 +10,7 @@ import argparse
 import sys
 import numpy as np
 from ase.io import read
-from anaddb_irreps.magnetic_transitions import MagneticTransitionFinder
+from symphon.magnetic_transitions import MagneticTransitionFinder
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Find chiral magnetic transitions")

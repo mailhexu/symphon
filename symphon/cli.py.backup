@@ -1,4 +1,4 @@
-"""Command-line interface for anaddb_irreps.
+"""Command-line interface for symphon.
 
 Provides a concise irreps summary by default and optional verbose output.
 """
@@ -8,12 +8,12 @@ from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for the anaddb_irreps CLI."""
+    """Parse command-line arguments for the symphon CLI."""
     parser = argparse.ArgumentParser(
         prog="anaddb-irreps",
         description=(
             "Compute irreducible representations of phonon modes from anaddb "
-            "PHBST output using anaddb_irreps (phonopy wrapper)."
+            "PHBST output using symphon (phonopy wrapper)."
         ),
     )
 
@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Entry point for the anaddb_irreps CLI."""
+    """Entry point for the symphon CLI."""
     args = parse_args()
 
     irr = IrRepsAnaddb(
@@ -135,7 +135,7 @@ def parse_args_phonopy() -> argparse.Namespace:
         prog="phonopy-irreps",
         description=(
             "Compute irreducible representations of phonon modes from phonopy "
-            "params/YAML output using anaddb_irreps (phonopy wrapper)."
+            "params/YAML output using symphon (phonopy wrapper)."
         ),
     )
 
@@ -166,7 +166,7 @@ def parse_args_phonopy() -> argparse.Namespace:
         default=None,
         help=(
             "Override symmetry precision used for structure analysis. "
-            "If omitted, anaddb_irreps will try to use the "
+            "If omitted, symphon will try to use the "
             "symmetry tolerance stored in the phonopy file, "
             "falling back to 1e-5."
         ),
