@@ -540,7 +540,9 @@ class IrRepsIrrep:
                         if self._phase_convention == 'R':
                             phase = 1.0
                         else:
-                            L_vec = rot_work @ positions_work_unmodded[k] + trans_work - positions_work_unmodded[k]
+                            # Phase = exp(2πi·q·(R·τ_k + t - τ_j))
+                            # where j is the destination atom (perm maps k -> j)
+                            L_vec = rot_work @ positions_work_unmodded[k] + trans_work - positions_work_unmodded[j]
                             phase = np.exp(2j * np.pi * np.dot(q_work, L_vec))
                         phases.append(phase)
                         found = True
