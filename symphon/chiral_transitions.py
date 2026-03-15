@@ -26,60 +26,28 @@ import numpy as np
 from typing import Any
 
 # =============================================================================
-# Dependencies (with graceful fallbacks)
+# Dependencies
 # =============================================================================
 
+import spglib
+from irrep.spacegroup_irreps import SpaceGroupIrreps
 try:
-    import spglib
-    HAS_SPGLIB = True
+    from irreptables.irreps import IrrepTable
 except ImportError:
-    HAS_SPGLIB = False
-    spglib: Any = None  # type: ignore
+    from irreptables import IrrepTable  # type: ignore
 
+from spgrep import get_spacegroup_irreps, get_spacegroup_irreps_from_primitive_symmetry
 try:
-    from irrep.spacegroup_irreps import SpaceGroupIrreps
-    try:
-        from irreptables.irreps import IrrepTable
-    except ImportError:
-        from irreptables import IrrepTable  # type: ignore
-    HAS_IRREP = True
+    from spgrep.rep.representation import get_character
 except ImportError:
-    HAS_IRREP = False
-    SpaceGroupIrreps: Any = None  # type: ignore
-    IrrepTable: Any = None  # type: ignore
+    from spgrep.representation import get_character
 
-try:
-    from spgrep import get_spacegroup_irreps, get_spacegroup_irreps_from_primitive_symmetry
-    try:
-        from spgrep.rep.representation import get_character
-    except ImportError:
-        try:
-            from spgrep.representation import get_character
-        except ImportError:
-            get_character: Any = None  # type: ignore
-    # Verify spgrep is actually working (some versions have spglib version conflicts)
-    try:
-        # Check signature for newer spgrep
-        get_spacegroup_irreps_from_primitive_symmetry(
-            np.eye(3, dtype='intc').reshape(1,3,3), 
-            np.zeros((1,3)), 
-            np.zeros(3)
-        )
-        HAS_SPGREP = True
-    except Exception:
-        HAS_SPGREP = False
-except ImportError:
-    HAS_SPGREP = False
-    get_spacegroup_irreps: Any = None  # type: ignore
-    get_spacegroup_irreps_from_primitive_symmetry: Any = None  # type: ignore
-    get_character: Any = None  # type: ignore
+from spgrep_modulation.isotropy import IsotropyEnumerator
 
-try:
-    from spgrep_modulation.isotropy import IsotropyEnumerator
-    HAS_SPGREP_MODULATION = True
-except ImportError:
-    HAS_SPGREP_MODULATION = False
-    IsotropyEnumerator: Any = None  # type: ignore
+# Flags are kept for compatibility if needed, but are now always True
+HAS_SPGLIB = True
+HAS_IRREP = True
+HAS_SPGREP = True
 
 
 # =============================================================================
@@ -631,50 +599,45 @@ class ChiralTransition:
 def opd_to_symbolic(opd: np.ndarray, tolerance: float = 1e-10) -> str:
     """
     Convert numerical OPD to symbolic notation.
-
-    Args:
-        opd: (dim,) or (num_params, dim) array
-        tolerance: numerical tolerance
-
-    Returns:
-        Symbolic string representation
+    Handles complex numbers like (a, ia).
     """
     opd = np.atleast_2d(opd)
     num_params, dim = opd.shape
-
     result = []
+
+    def format_val(v, param_char):
+        if np.isclose(v, 0, atol=tolerance):
+            return None
+        if np.isclose(v, 1, atol=tolerance):
+            return param_char
+        if np.isclose(v, -1, atol=tolerance):
+            return f"-{param_char}"
+        if np.isclose(v, 1j, atol=tolerance):
+            return f"i{param_char}"
+        if np.isclose(v, -1j, atol=tolerance):
+            return f"-i{param_char}"
+        
+        # General case
+        if np.isclose(v.imag, 0, atol=tolerance):
+            return f"{v.real:.2f}{param_char}"
+        elif np.isclose(v.real, 0, atol=tolerance):
+            return f"{v.imag:.2f}i{param_char}"
+        else:
+            return f"({v.real:.2f}+{v.imag:.2f}j){param_char}"
 
     for d in range(dim):
         col = opd[:, d]
-
-        if np.allclose(col, 0, atol=tolerance):
+        terms = []
+        for idx in range(num_params):
+            term = format_val(col[idx], chr(ord('a') + idx))
+            if term:
+                terms.append(term)
+        
+        if not terms:
             result.append('0')
-            continue
-
-        non_zero = np.where(np.abs(col) > tolerance)[0]
-
-        if len(non_zero) == 0:
-            result.append('0')
-        elif len(non_zero) == 1:
-            idx = non_zero[0]
-            val = col[idx]
-            if np.isclose(val, 1, atol=tolerance):
-                result.append(chr(ord('a') + idx))
-            elif np.isclose(val, -1, atol=tolerance):
-                result.append(f"-{chr(ord('a') + idx)}")
-            else:
-                result.append(f"{val:.2f}*{chr(ord('a') + idx)}")
         else:
-            terms = []
-            for idx in non_zero:
-                val = col[idx]
-                if np.isclose(val, 1, atol=tolerance):
-                    terms.append(chr(ord('a') + idx))
-                elif np.isclose(val, -1, atol=tolerance):
-                    terms.append(f"-{chr(ord('a') + idx)}")
-                else:
-                    terms.append(f"{val:.2f}*{chr(ord('a') + idx)}")
-            result.append('+'.join(terms).replace('+-', '-'))
+            res_str = '+'.join(terms).replace('+-', '-')
+            result.append(res_str)
 
     return '(' + ','.join(result) + ')'
 
@@ -1561,8 +1524,9 @@ class ChiralTransitionFinder:
             
         dim = len(star) * small_rep.shape[1]
         
-        # We only generate multi-k OPDs up to dimension 8 to avoid combinatoric explosion
-        if dim > 8:
+        # We only generate multi-k OPDs up to dimension 6 to avoid combinatoric explosion
+        # Note: 2*3 = 6 for R-lattice zone boundary points
+        if dim > 6:
             return star, full_reps, []
             
         seen_rays = set()
@@ -1868,9 +1832,32 @@ class ChiralTransitionFinder:
         parent_info = self.spacegroup_info
 
         if qpoint is not None:
-            qpoints_to_search = [(np.array(qpoint), qpoint_label or "user")]
+            # We must still find the star of k to be comprehensive
+            qp_in = np.array(qpoint)
+            
+            # Get primitive qpoint for star calculation
+            _, P_inv = self._get_transformation_matrices()
+            qp_prim = np.dot(P_inv, qp_in)
+            
+            star, _ = self._get_star_of_k(qp_prim)
+            P, _ = self._get_transformation_matrices()
+            
+            qpoints_to_search = []
+            for k_prim in star:
+                # L_prim = P L_conv => q_conv = P^T q_prim
+                k_conv = np.dot(P.T, k_prim)
+                qpoints_to_search.append((k_conv, qpoint_label or "user"))
         else:
-            qpoints_to_search = self.get_special_qpoints()
+            base_qs = self.get_special_qpoints()
+            qpoints_to_search = []
+            P, _ = self._get_transformation_matrices()
+            for qp, label in base_qs:
+                _, P_inv = self._get_transformation_matrices()
+                qp_prim = np.dot(P_inv.T, qp)
+                star, _ = self._get_star_of_k(qp_prim)
+                for k_prim in star:
+                    k_conv = np.dot(P.T, k_prim)
+                    qpoints_to_search.append((k_conv, label))
 
         # Group by q-point to avoid redundant calculations
         unique_qpoints = []
@@ -1880,20 +1867,18 @@ class ChiralTransitionFinder:
             # We use rounding to handle floating point precision
             qp_norm = np.round(qp % 1.0, 8)
             
-            # Special case for M-point (1,1,1) in body-centered which is (0,0,0) mod 1
-            # but is actually a zone-boundary point.
             is_new = True
             for sq, sl in seen_q:
-                # If they are different in integer part but same in fractional, they might be different points
-                # (like Gamma and M in I-lattice).
-                if np.allclose(qp_norm, np.round(sq % 1.0, 8)) and np.allclose(np.round(qp), np.round(sq)):
+                # Two q-points are the same if they differ by an integer vector
+                # AND have the same label. 
+                if np.allclose(qp_norm, np.round(sq % 1.0, 8)):
                     if label == sl:
                         is_new = False
                         break
             
             if is_new:
-                unique_qpoints.append((qp, label))
-                seen_q.append((qp, label))
+                unique_qpoints.append((qp.copy(), label))
+                seen_q.append((qp.copy(), label))
 
 
 
@@ -1903,11 +1888,13 @@ class ChiralTransitionFinder:
             if irr_basis == "primitive":
                 qp_prim = qp
                 P, P_inv = self._get_transformation_matrices()
+                # Reciprocal vectors transformation: q_conv = P^T q_prim
                 qp_conv = np.dot(P.T, qp_prim)
             else:
                 qp_conv = qp
                 _, P_inv = self._get_transformation_matrices()
-                qp_prim = np.dot(P_inv.T, qp_conv)
+                # q_prim = (P^-1)^T q_conv
+                qp_prim = np.dot(np.linalg.inv(P).T, qp_conv)
             
             try:
                 irreps = self.get_irreps_at_qpoint(qp, qp_label)

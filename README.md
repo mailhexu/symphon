@@ -53,42 +53,58 @@ pip install "symphon[irrep,abipy]"
 ```python
 from symphon import print_irreps_phonopy
 
-# Analyze Gamma point
-print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0])
-
-# Show both Mulliken and BCS labels at Gamma
-print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0], both_labels=True)
-
-# Analyze non-Gamma point (requires irrep backend)
-print_irreps_phonopy(
-    "phonopy_params.yaml",
-    qpoint=[0.5, 0.5, 0],
-    backend="irrep",
-    kpname="M"
-)
+# Analyze any q-point (backend auto-selected)
+print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0])  # Gamma
+print_irreps_phonopy("phonopy_params.yaml", qpoint=[0.5, 0.5, 0])  # M point
 ```
 
 ### Command Line
+
+#### Unified CLI (symphon)
+
+All functionality is available through the unified `symphon` CLI:
+
+```bash
+# Phonon irreps from phonopy (auto-discovers all high-symmetry k-points)
+symphon phonopy-irreps --params phonopy_params.yaml
+
+# Phonon irreps from anaddb (auto-discovers high-symmetry q-points)
+symphon anaddb-irreps --phbst run_PHBST.nc
+
+# With chiral transition analysis
+symphon phonopy-irreps --params phonopy_params.yaml --chiral
+
+# Find chiral phase transitions from space groups
+symphon find-chiral-transition --sg 136
+
+# Magnetic chirality analysis
+symphon magnetic-chiral --structure POSCAR --qpoint 0 0 0.5 --mag-sites 0,1
+symphon abstract-magnetic --spg 221 --qpoint 0 0 0
+symphon msg 18.16
+```
 
 #### phonopy-irreps (Auto-discovery mode)
 
 ```bash
 # Analyze all high-symmetry k-points automatically
-phonopy-irreps --params phonopy_params.yaml
+symphon phonopy-irreps --params phonopy_params.yaml
 
 # Output shows all high-symmetry points:
 # - GM point: dual labels (Mulliken + BCS) + IR/Raman activity
 # - Other points (M, R, X, etc.): BCS labels
 ```
 
-#### anaddb-irreps (Manual mode for PHBST files)
+#### anaddb-irreps (Auto-discovery or manual mode)
 
 ```bash
-# PHBST files require explicit q-point index (no auto-discovery)
-anaddb-irreps --phbst run_PHBST.nc --q-index 0
+# Auto-discover all high-symmetry q-points (using standalone command)
+anaddb-irreps --phbst run_PHBST.nc
 
-# For non-Gamma points, specify backend and k-point name
-anaddb-irreps --phbst run_PHBST.nc --q-index 5 --backend irrep --kpname M
+# Or using unified CLI
+symphon anaddb-irreps --phbst run_PHBST.nc
+
+# Or analyze specific q-point (0-based index)
+symphon anaddb-irreps --phbst run_PHBST.nc --q-index 0
 ```
 
 ## Output Examples

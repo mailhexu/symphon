@@ -67,12 +67,6 @@ def print_transitions(
         Number of transitions found
     """
     try:
-        from symphon.chiral_transitions import HAS_SPGREP, HAS_SPGREP_MODULATION
-        if not HAS_SPGREP or not HAS_SPGREP_MODULATION:
-            print("Error: 'spgrep' and 'spgrep-modulation' are required for chiral transition analysis.", file=sys.stderr)
-            print("Install them with: pip install spgrep spgrep-modulation", file=sys.stderr)
-            return 0
-            
         transitions = finder.find_chiral_transitions()
     except Exception as e:
         print(f"Error finding transitions: {e}", file=sys.stderr)
@@ -151,14 +145,7 @@ def print_summary_for_all(use_cache: bool = True, refresh: bool = False) -> None
         
         try:
             finder = ChiralTransitionFinder(spg_num)
-            
-            from symphon.chiral_transitions import HAS_SPGREP
-            if HAS_SPGREP:
-                transitions = finder.find_chiral_transitions()
-            else:
-                # Should not happen if dependencies are checked earlier, 
-                # but we can't easily exit here without breaking the loop
-                continue
+            transitions = finder.find_chiral_transitions()
             
             if not transitions:
                 continue

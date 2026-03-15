@@ -17,6 +17,11 @@ dependencies = [
   "ase>=3.19",
   "phonopy>=2.43.0",
   "netCDF4",
+  "spglib>=2.0.0",
+  "spgrep>=0.5.0",
+  "spgrep-modulation>=0.3.0",
+  "irrep>=2.0.0",
+  "irreptables",
 ]
 
 classifiers = [
@@ -31,8 +36,6 @@ classifiers = [
 
 [project.optional-dependencies]
 abipy = ["abipy>=0.9.8"]
-irrep = ["irrep", "irreptables"]
-chiral = ["spgrep>=0.3.0", "spgrep-modulation>=0.3.0", "irrep>=2.0.0", "irreptables"]
 dev = ["pytest>=7.0", "pytest-cov"]
 
 [tool.setuptools]
@@ -41,6 +44,7 @@ packages = ["symphon"]
 [project.scripts]
 anaddb-irreps = "symphon.cli:main"
 symphon = "symphon.cli_symphon:main"
+symphon-modulate = "symphon.cli_modulate:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

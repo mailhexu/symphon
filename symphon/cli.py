@@ -275,7 +275,7 @@ def main_phonopy() -> None:
     try:
         from irreptables.irreps import IrrepTable
     except ImportError:
-        from irreptables import IrrepTable
+        from irreptables import IrrepTable  # type: ignore
     from phonopy import load as phonopy_load
     
     args = parse_args_phonopy()
@@ -355,7 +355,7 @@ def main_phonopy() -> None:
         print(f"# k_prim = [{k[0]:.4f}, {k[1]:.4f}, {k[2]:.4f}]")
         
         # Get BCS coordinates and label if available
-        backend_obj = getattr(irr, '_backend_obj', None)
+        backend_obj = getattr(irr, '_irrep_backend_obj', None)
         if backend_obj and hasattr(backend_obj, '_qpoint_bcs') and hasattr(backend_obj, '_bcs_kpname'):
             q_bcs = backend_obj._qpoint_bcs
             bcs_label = backend_obj._bcs_kpname

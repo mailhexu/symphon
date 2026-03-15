@@ -49,13 +49,13 @@ print_irreps(
     ind_q=0,
     symprec=1e-8,              # Symmetry precision (default: 1e-5)
     degeneracy_tolerance=1e-4, # Frequency tolerance (default: 1e-4)
-    is_little_cogroup=False,    # Use little co-group setting (default: False)
+    is_little_cogroup=False,   # Use little co-group setting (default: False)
     log_level=0,               # Verbosity: 0=quiet, 1+=verbose (default: 0)
-    show_verbose=True,          # Show detailed phonopy output (default: False)
-    backend="phonopy",         # Backend: "phonopy" or "irrep" (default: "phonopy")
-    kpname=None,               # K-point name for irrep backend (e.g., "GM", "X", "M")
+    show_verbose=True,         # Show detailed phonopy output (default: False)
 )
 ```
+
+**Note**: The `backend` parameter is deprecated in the CLI but still available in the Python API for advanced use cases. The backend is automatically selected based on the q-point (phonopy for Gamma, irrep for others).
 
 ### From phonopy params/YAML
 
@@ -66,7 +66,7 @@ If you already have a phonopy params/YAML file (e.g. `phonopy_params.yaml` or `p
 ```python
 from symphon import print_irreps_phonopy
 
-# Simple usage at Gamma point
+# Simple usage at any q-point (backend auto-selected)
 print_irreps_phonopy("phonopy_params.yaml", qpoint=[0.0, 0.0, 0.0])
 ```
 
@@ -75,7 +75,6 @@ print_irreps_phonopy("phonopy_params.yaml", qpoint=[0.0, 0.0, 0.0])
 ```python
 from symphon import print_irreps_phonopy
 
-# For non-Gamma points using irrep backend
 print_irreps_phonopy(
     "phonopy_params.yaml",
     qpoint=[0.5, 0.5, 0.0],  # M point
@@ -84,10 +83,10 @@ print_irreps_phonopy(
     is_little_cogroup=False,
     log_level=0,
     show_verbose=False,
-    backend="irrep",              # Backend: "phonopy" or "irrep"
-    kpname="M",                  # K-point name (required for non-Gamma with irrep backend)
 )
 ```
+
+**Note**: The `backend` and `kpname` parameters are deprecated in the CLI but still available in the Python API. The backend is automatically selected, and k-point names are determined from the q-point coordinates.
 
 ### Parameters
 
@@ -100,8 +99,8 @@ print_irreps_phonopy(
 - **is_little_cogroup** (bool): Use little co-group setting (default: False)
 - **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - **show_verbose** (bool): Show detailed phonopy irreps output (default: False)
-- **backend** (str): Backend driver: `"phonopy"` or `"irrep"` (default: `"phonopy"`)
-- **kpname** (str): K-point name for `irrep` backend (e.g., `"GM"`, `"X"`, `"M"`). Required for non-Gamma points when using irrep backend.
+- **backend** (str, optional): Backend driver: `"phonopy"` or `"irrep"`. If not specified, automatically selected based on q-point.
+- **kpname** (str, optional): K-point name for `irrep` backend (e.g., `"GM"`, `"X"`, `"M"`).
 
 #### For `print_irreps_phonopy` (phonopy route):
 
@@ -112,106 +111,232 @@ print_irreps_phonopy(
 - **is_little_cogroup** (bool): Use little co-group setting (default: False)
 - **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - **show_verbose** (bool): Show detailed phonopy irreps output (default: False)
-- **backend** (str): Backend driver: `"phonopy"` or `"irrep"` (default: `"phonopy"`)
-- **kpname** (str): K-point name for `irrep` backend (e.g., `"GM"`, `"X"`, `"M"`). Required for non-Gamma points when using irrep backend.
+- **backend** (str, optional): Backend driver: `"phonopy"` or `"irrep"`. If not specified, automatically selected based on q-point.
+- **kpname** (str, optional): K-point name for `irrep` backend (e.g., `"GM"`, `"X"`, `"M"`).
 
 ---
 
 ## Command-Line Interface
 
-Use the `anaddb-irreps` and `phonopy-irreps` command-line tools for quick command-line access.
+The `symphon` package provides a unified CLI with subcommands, plus a standalone command for backward compatibility.
+
+### Unified CLI (Recommended)
+
+The `symphon` command provides all functionality through subcommands:
+
+```bash
+symphon <subcommand> [options]
+```
+
+Available subcommands:
+- `anaddb-irreps` - Irreps from anaddb PHBST file
+- `phonopy-irreps` - Irreps from phonopy params/YAML file (auto-discovery)
+- `find-chiral-transition` - Find chiral phase transitions
+- `magnetic-chiral` - Find chiral magnetic transitions
+- `abstract-magnetic` - Abstract chiral magnetic transitions by space group
+- `msg` - Identify chirality of a Magnetic Space Group
+
+### Legacy Standalone Command
+
+- `anaddb-irreps` - Same as `symphon anaddb-irreps` (for backward compatibility)
+
+**Note**: There is no standalone `phonopy-irreps` command. Use `symphon phonopy-irreps` instead.
+
+---
+
+## Phonon Irreps Commands
 
 ### anaddb-irreps
 
-For analyzing anaddb PHBST NetCDF files.
+Analyze phonon irreps from anaddb PHBST NetCDF files.
 
-#### Basic Example
+#### Auto-Discovery Mode (Default)
 
 ```bash
-anaddb-irreps --phbst run_PHBST.nc --q-index 0
+# Automatically find and analyze all high-symmetry q-points
+symphon anaddb-irreps --phbst run_PHBST.nc
+
+# Or using standalone command:
+anaddb-irreps --phbst run_PHBST.nc
+```
+
+#### Single Q-Point Mode
+
+```bash
+# Analyze specific q-point (0-based index)
+symphon anaddb-irreps --phbst run_PHBST.nc --q-index 0
+
+# For non-Gamma points, specify k-point name
+symphon anaddb-irreps --phbst run_PHBST.nc --q-index 5 --kpname M
 ```
 
 #### With Options
 
 ```bash
-anaddb-irreps \
+symphon anaddb-irreps \
   --phbst run_PHBST.nc \
   --q-index 0 \
   --symprec 1e-8 \
   --degeneracy-tolerance 1e-4 \
-  --log-level 1
-```
-
-#### Using irrep Backend
-
-```bash
-# For non-Gamma points, use irrep backend
-anaddb-irreps \
-  --phbst run_PHBST.nc \
-  --q-index 1 \
-  --backend irrep \
-  --kpname X
+  --log-level 1 \
+  --show-verbose
 ```
 
 ### phonopy-irreps
 
-For analyzing phonopy params/YAML files.
+Analyze phonon irreps from phonopy params/YAML files. **Always runs in auto-discovery mode**, automatically analyzing all high-symmetry k-points using the `irrep` backend.
 
-#### Basic Example
+#### Basic Usage
 
 ```bash
-phonopy-irreps --params phonopy_params.yaml --qpoint 0.0 0.0 0.0
+# Automatically analyze all high-symmetry k-points
+symphon phonopy-irreps --params phonopy_params.yaml
+
+# Or using standalone command:
+phonopy-irreps --params phonopy_params.yaml
 ```
 
 #### With Options
 
 ```bash
-phonopy-irreps \
+symphon phonopy-irreps \
   --params phonopy_params.yaml \
-  --qpoint 0.5 0.5 0.0 \
   --symprec 1e-5 \
   --degeneracy-tolerance 1e-4 \
-  --log-level 0
+  --log-level 0 \
+  --chiral
 ```
 
-#### Using irrep Backend
+#### Chiral Transitions
+
+Add `--chiral` flag to show possible chiral symmetry-breaking transitions:
 
 ```bash
-# For non-Gamma points, use irrep backend
-phonopy-irreps \
-  --params phonopy_params.yaml \
-  --qpoint 0.0 0.5 0.0 \
-  --backend irrep \
-  --kpname X
+symphon phonopy-irreps --params phonopy_params.yaml --chiral
 ```
+
+This adds two columns to the output:
+- **OPD**: Order Parameter Direction (e.g., `(a)`, `(a,0)`, `(a,a,...)`)
+- **Daughter SG**: Target chiral Sohncke space group(s)
 
 ### CLI Options
 
 #### For `anaddb-irreps`:
 
 - `-p`, `--phbst` (required): Path to PHBST NetCDF file
-- `-q`, `--q-index` (required): Index of q-point in PHBST file (0-based)
+- `-q`, `--q-index` (optional): Index of q-point in PHBST file (0-based). If omitted, analyzes all high-symmetry q-points automatically.
 - `-s`, `--symprec`: Symmetry precision (default: 1e-5)
 - `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
 - `-l`, `--is-little-cogroup`: Use little co-group setting
 - `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - `--show-verbose`: Also print full verbose irreps output (phonopy-style)
 - `--verbose-file`: If set, write verbose output to this file instead of stdout
-- `-b`, `--backend`: Backend driver to use for irrep identification. Choices: `"phonopy"` (default), `"irrep"`
-- `-k`, `--kpname`: K-point name (e.g., `"GM"`, `"X"`, `"M"`) used by `irrep` backend
+- `-k`, `--kpname`: K-point name (e.g., `"GM"`, `"X"`, `"M"`). Used only in single q-point mode; in auto-discovery mode, labels are determined automatically.
 
 #### For `phonopy-irreps`:
 
 - `-p`, `--params` (required): Path to phonopy params/YAML file
-- `--qpoint` (required): Three floats for q-point in fractional coordinates
-- `-s`, `--symprec`: Override symmetry precision. If omitted, symphon will try to use the symmetry tolerance stored in the phonopy file, falling back to `1e-5`.
+- `-s`, `--symprec`: Override symmetry precision. If omitted, uses the symmetry tolerance from the phonopy file, falling back to `1e-5`.
 - `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
 - `-l`, `--is-little-cogroup`: Use little co-group setting
 - `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - `--show-verbose`: Also print full verbose irreps output (phonopy-style)
 - `--verbose-file`: If set, write verbose output to this file instead of stdout
-- `-b`, `--backend`: Backend driver to use for irrep identification. Choices: `"phonopy"` (default), `"irrep"`
-- `-k`, `--kpname`: K-point name (e.g., `"GM"`, `"X"`, `"M"`) used by `irrep` backend
+- `--chiral`: Show chiral transition information (OPD and daughter space groups)
+
+**Note**: The `phonopy-irreps` command automatically analyzes all high-symmetry k-points using the `irrep` backend. There is no `--qpoint` or `--backend` option - the analysis is fully automatic.
+
+---
+
+## Chiral Transitions Commands
+
+### find-chiral-transition
+
+Find possible chiral phase transitions from a parent space group to chiral Sohncke subgroups.
+
+#### Basic Usage
+
+```bash
+# Find transitions from a specific space group
+symphon find-chiral-transition --sg 136
+
+# Find transitions from all non-Sohncke groups (with caching)
+symphon find-chiral-transition --all
+
+# Filter by daughter space group
+symphon find-chiral-transition --sg 84 --daughter 77
+```
+
+#### Options
+
+- `--sg`, `--space-group`: Space group number (1-230) to find transitions FROM
+- `--daughter`: Filter transitions by daughter space group number
+- `--all`: Print summary for all non-Sohncke space groups
+- `--list-daughters`: List all possible chiral daughter space groups
+- `--list-sons`: List all space groups that can transition to a chiral daughter
+- `--output`, `-o`: Output file (default: stdout)
+- `--verbose`, `-v`: Verbose output
+- `--cache`: Use cached results for `--all` (default: True)
+- `--no-cache`: Disable caching for `--all`
+- `--refresh-cache`: Force refresh the cache for `--all`
+
+---
+
+## Magnetic Chirality Commands
+
+### magnetic-chiral
+
+Find chiral magnetic phase transitions from a structure with magnetic sites.
+
+```bash
+symphon magnetic-chiral \
+  --structure POSCAR \
+  --qpoint 0 0 0.5 \
+  --mag-sites 0,1
+```
+
+#### Options
+
+- `--structure` (required): Path to structural file (e.g., POSCAR, CIF)
+- `--qpoint`: Propagation wavevector in fractional coordinates (default: `0 0 0`)
+- `--mag-sites` (required): Comma-separated list of magnetic atom indices (0-based)
+- `--symprec`: Symmetry precision (default: 1e-5)
+
+### abstract-magnetic
+
+Find abstract chiral magnetic transitions by space group number.
+
+```bash
+symphon abstract-magnetic --spg 221 --qpoint 0 0 0
+```
+
+#### Options
+
+- `--spg` (required): Parent space group number (1-230)
+- `--qpoint`: Propagation wavevector in fractional coordinates (default: `0 0 0`)
+- `--multi-k`: Include multi-k transitions
+- `--all`: Show all transitions, not just chiral ones
+- `--symprec`: Symmetry precision (default: 1e-5)
+
+### msg
+
+Identify the chirality classification of a Magnetic Space Group (MSG).
+
+```bash
+symphon msg 18.16
+```
+
+#### Arguments
+
+- `identifier` (required): BNS number (e.g., `'18.16'`) or UNI number (e.g., `114`) of the Magnetic Space Group
+
+This command displays:
+- BNS and UNI numbers
+- Family space group
+- Magnetic type (I, II, III, or IV)
+- Chirality status
+- Sohncke class (I, II, or III)
+- Enantiomorph partner (for Class II groups)
 
 ---
 

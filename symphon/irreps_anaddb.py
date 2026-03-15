@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Optional, List, cast
 from scipy.constants import c, h, e, tera
 from phonopy.phonon.irreps import IrReps, IrRepLabels
 from phonopy.structure.symmetry import Symmetry
@@ -39,8 +40,8 @@ class ReportingMixin:
         irreps = getattr(self, "_irreps", None)
 
         # Build IR/Raman activity maps from _RamanIR_labels when available.
-        ir_active_map: dict = {}
-        raman_active_map: dict = {}
+        ir_active_map: dict[str, bool] = {}
+        raman_active_map: dict[str, bool] = {}
 
         raman_ir = getattr(self, "_RamanIR_labels", None)
         if raman_ir is not None:
@@ -50,9 +51,10 @@ class ReportingMixin:
             for lbl in raman_labels:
                 raman_active_map[lbl] = True
 
-        # Extract labels using degenerate sets and _ir_labels when using phonopy backend.
+        # Extract labels and OPDs using degenerate sets and _ir_labels when using phonopy backend.
         # If _irreps is already list of dicts (irrep backend), we use it directly.
-        raw_labels = [None] * n_modes
+        raw_labels = cast(List[Optional[str]], [None] * n_modes)
+        raw_opds = cast(List[Optional[str]], [None] * n_modes)
         ir_labels_seq = getattr(self, "_ir_labels", None)
         deg_sets = getattr(self, "_degenerate_sets", None)
         
@@ -60,7 +62,7 @@ class ReportingMixin:
         chiral_map = getattr(self, "_chiral_transitions_map", {})
 
         # Build a mapping from mode index to degenerate set index
-        mode_to_degset = {}
+        mode_to_degset: dict[int, int] = {}
         if deg_sets is not None:
             for set_idx, deg_set in enumerate(deg_sets):
                 for mode_idx in deg_set:
@@ -68,6 +70,7 @@ class ReportingMixin:
 
         for band_index in range(n_modes):
             label = None
+            opd = None
 
             # 1) Prefer label attached to irreps[band_index] when present.
             if irreps is not None and band_index < len(irreps):
@@ -76,6 +79,11 @@ class ReportingMixin:
                     label = ir.label
                 elif isinstance(ir, dict) and "label" in ir:
                     label = ir["label"]
+                
+                if isinstance(ir, dict) and "opd" in ir:
+                    opd = ir["opd"]
+                elif hasattr(ir, "opd"):
+                    opd = ir.opd
 
             # 2) Fallback: use _ir_labels indexed by degenerate set.
             if label is None and ir_labels_seq is not None:
@@ -89,7 +97,14 @@ class ReportingMixin:
                     elif isinstance(cand, str):
                         label = cand
 
+            # 3) Check BCS specific OPD
+            if opd is None:
+                opd_bcs_seq = getattr(self, "_irrep_opds_bcs", None)
+                if opd_bcs_seq and band_index < len(opd_bcs_seq):
+                    opd = opd_bcs_seq[band_index]
+
             raw_labels[band_index] = label
+            raw_opds[band_index] = opd
 
         # Propagate labels within degenerate sets to ensure all members
         # of a multiplet share the same label.
@@ -113,37 +128,55 @@ class ReportingMixin:
             is_raman_active = bool(label and raman_active_map.get(label, False))
 
             # Lookup chiral transitions
-            opd_str = "-"
+            opd_str = raw_opds[band_index] or "-"
             daughter_str = "-"
-            
-            # Check both primary label and BCS label
-            labels_to_check = []
-            if label:
-                labels_to_check.append(label)
-            
-            irrep_labels_bcs = getattr(self, "_irrep_labels_bcs", None)
-            if irrep_labels_bcs and band_index < len(irrep_labels_bcs):
-                label_bcs = irrep_labels_bcs[band_index]
-                if label_bcs and label_bcs not in labels_to_check:
-                    labels_to_check.append(label_bcs)
+            # 4) Prefer daughter_sg from backend if present
+            backend = getattr(self, "_irrep_backend_obj", None)
+            if backend and hasattr(backend, "_irreps") and band_index < len(backend._irreps):
+                ir = backend._irreps[band_index]
+                if isinstance(ir, dict) and "daughter_sg" in ir:
+                    daughter_str = ir["daughter_sg"]
+                elif hasattr(ir, "daughter_sg"):
+                    daughter_str = ir.daughter_sg
+            elif irreps is not None and band_index < len(irreps):
+                ir = irreps[band_index]
+                if isinstance(ir, dict) and "daughter_sg" in ir:
+                    daughter_str = ir["daughter_sg"]
+                elif hasattr(ir, "daughter_sg"):
+                    daughter_str = ir.daughter_sg
 
-            for lbl in labels_to_check:
-                # Try exact match first
-                trans_list = chiral_map.get(lbl)
-                if not trans_list:
-                    # Try match without branch index (e.g. Z3:1 -> Z3)
-                    base_label = lbl.split(":")[0]
-                    trans_list = chiral_map.get(base_label)
+            # 5) Lookup chiral transitions if daughter_str is still "-"
+            if daughter_str == "-":
+                labels_to_check = []
+                if label:
+                    labels_to_check.append(label)
                 
-                if trans_list:
-                    if not isinstance(trans_list, list):
-                        trans_list = [trans_list]
+                irrep_labels_bcs = getattr(self, "_irrep_labels_bcs", None)
+                if irrep_labels_bcs and band_index < len(irrep_labels_bcs):
+                    label_bcs = irrep_labels_bcs[band_index]
+                    if label_bcs and label_bcs not in labels_to_check:
+                        labels_to_check.append(label_bcs)
+
+                for lbl in labels_to_check:
+                    # Try exact match first
+                    trans_list = chiral_map.get(lbl)
+                    if not trans_list:
+                        # Try match without branch index (e.g. Z3:1 -> Z3)
+                        base_label = lbl.split(":")[0]
+                        trans_list = chiral_map.get(base_label)
                     
-                    opds = sorted(list(set(t.opd.symbolic for t in trans_list)))
-                    daughters = sorted(list(set(f"{t.daughter_spg_symbol}(#{t.daughter_spg_number})" for t in trans_list)))
-                    opd_str = ", ".join(opds)
-                    daughter_str = ", ".join(daughters)
-                    break # Found a match
+                    if trans_list:
+                        if not isinstance(trans_list, list):
+                            trans_list = [trans_list]
+                        
+                        if opd_str == "-":
+                            # If backend didn't provide OPD, use symbolic from transitions
+                            opds = sorted(list(set(t.opd.symbolic for t in trans_list)))
+                            opd_str = ", ".join(opds)
+                            
+                        daughters = sorted(list(set(f"{t.daughter_spg_symbol}(#{t.daughter_spg_number})" for t in trans_list)))
+                        daughter_str = ", ".join(daughters)
+                        break # Found a match
 
             summary.append(
                 {
@@ -205,13 +238,16 @@ class ReportingMixin:
             show_chiral: Whether to include OPD and daughter SG chiral transition columns
         """
         summary = self.get_summary_table()
-        if not show_chiral:
-            show_chiral_cols = False
-        else:
-            show_chiral_cols = any(row.get("opd") != "-" or row.get("daughter_sg") != "-" for row in summary)
-
+        show_chiral_cols = any(row.get("daughter_sg") != "-" for row in summary)
+        
+        # Decide which columns to show.
+        # OPD column should show if show_chiral is requested OR if BCS labels/OPDs were computed.
+        bcs_labels = getattr(self, "_irrep_labels_bcs", [])
+        bcs_opds = getattr(self, "_irrep_opds_bcs", [])
+        has_bcs_data = any(lbl for lbl in bcs_labels) or any(opd for opd in bcs_opds)
+        
+        show_both = has_bcs_data
         show_activity = True
-        show_both = getattr(self, "_irrep_labels_bcs", None) is not None
 
         lines = []
         if include_symmetry:
@@ -230,22 +266,26 @@ class ReportingMixin:
                 lines.append("")
         if include_header:
             if include_qpoint_cols:
-                if show_activity and show_both:
-                    header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman"
-                elif show_activity:
-                    header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label        IR  Raman"
+                header = f"{'# qx':>8s} {'qy':>8s} {'qz':>8s} {'band':>5s} {'freq(THz)':>10s} {'freq(cm-1)':>11s}"
+                if show_both:
+                    header += f" {'label(M)':>12s} {'label(BCS)':>12s}"
                 else:
-                    header = "# qx      qy      qz      band  freq(THz)   freq(cm-1)   label"
+                    header += f" {'label':>12s}"
+                if show_activity:
+                    header += f" {'IR':^4s} {'Raman':^6s}"
             else:
-                if show_activity and show_both:
-                    header = "# band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman"
-                elif show_activity:
-                    header = "# band  freq(THz)   freq(cm-1)   label        IR  Raman"
+                header = f"{'# band':>6s} {'freq(THz)':>10s} {'freq(cm-1)':>11s}"
+                if show_both:
+                    header += f" {'label(M)':>12s} {'label(BCS)':>12s}"
                 else:
-                    header = "# band  freq(THz)   freq(cm-1)   label"
+                    header += f" {'label':>12s}"
+                if show_activity:
+                    header += f" {'IR':^4s} {'Raman':^6s}"
             
             if show_chiral_cols:
-                header += "   OPD          Daughter SG"
+                header += f" {'OPD':<15s} {'Daughter SG':<20s}"
+            elif show_both:
+                header += f" {'OPD':<15s}"
             lines.append(header)
 
         for i, row in enumerate(summary):
@@ -254,65 +294,35 @@ class ReportingMixin:
             f_thz = row["frequency_thz"]
             f_cm1 = row["frequency_cm1"]
             label = row["label"] or "-"
+            ir_flag = "Y" if row.get("is_ir_active") else "."
+            raman_flag = "Y" if row.get("is_raman_active") else "."
             
+            if include_qpoint_cols:
+                line = f"{qx:8.4f} {qy:8.4f} {qz:8.4f} {bi:5d} {f_thz:10.4f} {f_cm1:11.2f}"
+            else:
+                line = f"{bi:6d} {f_thz:10.4f} {f_cm1:11.2f}"
+
             if show_both:
-                # Get both labels: phonopy (Mulliken) and irrep (BCS)
                 irrep_labels_bcs = getattr(self, "_irrep_labels_bcs", None)
                 label_mulliken = label if label else "-"
                 label_bcs = "-"
                 if irrep_labels_bcs and i < len(irrep_labels_bcs):
                     label_bcs = irrep_labels_bcs[i] or "-"
-                
-                if show_activity:
-                    ir_flag = "Y" if row["is_ir_active"] else "."
-                    raman_flag = "Y" if row["is_raman_active"] else "."
-                    if include_qpoint_cols:
-                        line = (
-                            f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                            f"{f_thz:10.4f}  {f_cm1:11.2f}  {str(label_mulliken):10s}  {str(label_bcs):10s}  {ir_flag:^3s} {raman_flag:^5s}"
-                        )
-                    else:
-                        line = (
-                            f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label_mulliken):10s}  {str(label_bcs):10s}  {ir_flag:^3s} {raman_flag:^5s}"
-                        )
-                else:
-                    if include_qpoint_cols:
-                        line = (
-                            f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                            f"{f_thz:10.4f}  {f_cm1:11.2f}  {str(label_mulliken):10s}  {str(label_bcs):10s}"
-                        )
-                    else:
-                        line = (
-                            f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label_mulliken):10s}  {str(label_bcs):10s}"
-                        )
-            elif show_activity:
-                ir_flag = "Y" if row["is_ir_active"] else "."
-                raman_flag = "Y" if row["is_raman_active"] else "."
-                if include_qpoint_cols:
-                    line = (
-                        f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}  {ir_flag:^3s} {raman_flag:^5s}"
-                    )
-                else:
-                    line = (
-                        f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}  {ir_flag:^3s} {raman_flag:^5s}"
-                    )
+                line += f" {str(label_mulliken):>12s} {str(label_bcs):>12s}"
             else:
-                if include_qpoint_cols:
-                    line = (
-                        f"{qx:7.4f} {qy:7.4f} {qz:7.4f}  {bi:4d}  "
-                        f"{f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}"
-                    )
-                else:
-                    line = (
-                        f"{bi:5d}  {f_thz:10.4f}  {f_cm1:11.2f}  {str(label):10s}"
-                    )
+                line += f" {str(label):>12s}"
+                
+            if show_activity:
+                line += f" {ir_flag:^4s} {raman_flag:^6s}"
             
             if show_chiral_cols:
-                opd_str = row.get("opd", "-")
-                daughter_str = row.get("daughter_sg", "-")
-                # Add enough padding so it aligns with the header
-                line = f"{line:90s}  {opd_str:12s}  {daughter_str}"
+                opd = row.get("opd") or "-"
+                dsg = row.get("daughter_sg") or "-"
+                line += f" {str(opd):<15s} {str(dsg):<20s}"
+            elif show_both:
+                opd = row.get("opd") or "-"
+                line += f" {str(opd):<15s}"
+                
             lines.append(line)
 
         return "\n".join(lines)
@@ -352,14 +362,17 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         self._qpoint = np.array(qpoint)
         self._degeneracy_tolerance = degeneracy_tolerance
         self._symprec = symprec
+        self._irrep_opds_num_bcs = []
         self._primitive = primitive_atoms
         self._freqs, self._eig_vecs = freqs, eigvecs
         self._character_table = None
         self._verbose = False
-        self._irrep_labels_bcs = None
+        self._irrep_labels_bcs: List[Optional[str]] = []
+        self._irrep_opds_bcs: List[Optional[str]] = []
         self._irrep_backend_obj = None
         self._chiral_transitions_map = {}
         self._spacegroup_number = None
+        self._compute_chiral = False
 
     def run(self, kpname=None) -> bool:
         self._bcs_kpname = kpname
@@ -423,37 +436,103 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
                 print(f"Point group {self._pointgroup_symbol} not found in database.")
 
         # 2. Always run irrep backend for BCS notation
-        try:
-            from .irrep_backend import IrRepsIrrep
-            self._irrep_backend_obj = IrRepsIrrep(
-                primitive=self._primitive,
-                qpoint=self._qpoint,
-                freqs=self._freqs,
-                eigvecs=self._eig_vecs,
-                symprec=self._symprec,
-                log_level=self._log_level
-            )
-            self._irrep_backend_obj.run(kpname=kpname)
-            self._irrep_labels_bcs = []
-            for irrep in self._irrep_backend_obj._irreps:
-                if isinstance(irrep, dict):
-                    self._irrep_labels_bcs.append(irrep.get("label"))
-                else:
-                    self._irrep_labels_bcs.append(getattr(irrep, "label", None))
-        except ImportError:
-            if self._log_level > 0:
-                print("Warning: irrep package not installed. BCS labels will not be available.")
-            self._irrep_labels_bcs = [None] * len(self._freqs)
-        except Exception as e:
-            if self._log_level > 0:
-                print(f"Warning: Failed to compute BCS labels: {e}")
-            self._irrep_labels_bcs = [None] * len(self._freqs)
+        from .irrep_backend import IrRepsIrrep
+        self._irrep_backend_obj = IrRepsIrrep(
+            primitive=self._primitive,
+            qpoint=self._qpoint,
+            freqs=self._freqs,
+            eigvecs=self._eig_vecs,
+            symprec=self._symprec,
+            log_level=self._log_level
+        )
+        self._irrep_backend_obj.run(kpname=kpname)
+        self._irrep_labels_bcs = []
+        self._irrep_opds_bcs = []
+        self._irrep_opds_num_bcs = []
+        for irrep in self._irrep_backend_obj._irreps:
+            if isinstance(irrep, dict):
+                self._irrep_labels_bcs.append(irrep.get("label"))
+                self._irrep_opds_bcs.append(irrep.get("opd"))
+                self._irrep_opds_num_bcs.append(irrep.get("opd_num"))
+            else:
+                self._irrep_labels_bcs.append(getattr(irrep, "label", None))
+                self._irrep_opds_bcs.append(getattr(irrep, "opd", None))
+                self._irrep_opds_num_bcs.append(getattr(irrep, "opd_num", None))
 
         if getattr(self, "_compute_chiral", False):
             self._compute_chiral_transitions()
         else:
             self._chiral_transitions_map = {}
         return True
+
+    def get_modulated_supercell(
+        self,
+        mode_index: int,
+        amplitude: float = 0.1,
+        supercell_matrix: Optional[np.ndarray] = None,
+    ):
+        """
+        Generate a modulated supercell for a specific phonon mode.
+        If the mode is part of a degenerate set, it uses the high-symmetry basis
+        calculated during the run() phase.
+        
+        Args:
+            mode_index: Index of the phonon mode (0 to 3N-1).
+            amplitude: Maximum displacement in Angstrom.
+            supercell_matrix: (3, 3) matrix for supercell generation. 
+                             If None, a minimal commensurate supercell is used.
+                             
+        Returns:
+            PhonopyAtoms object representing the modulated structure.
+        """
+        import numpy as np
+        from phonopy.structure.cells import get_supercell
+        
+        if supercell_matrix is None:
+            if np.allclose(self._qpoint, 0):
+                supercell_matrix = np.eye(3, dtype=int)
+            else:
+                # Simple estimation of commensurate supercell
+                from fractions import Fraction
+                denoms = [Fraction(x).limit_denominator(100).denominator for x in self._qpoint]
+                supercell_matrix = np.diag(denoms)
+        
+        supercell_matrix = np.array(supercell_matrix)
+        if supercell_matrix.ndim == 1:
+            supercell_matrix = np.diag(supercell_matrix)
+            
+        sc = get_supercell(self._primitive, supercell_matrix)
+        sc_size = np.abs(np.around(np.linalg.det(supercell_matrix)))
+        
+        num_atoms = len(self._primitive.masses)
+        # self._eig_vecs is (3*num_atoms, 3*num_atoms)
+        e_full = self._eig_vecs[:, mode_index]
+        e_reshaped = e_full.reshape(num_atoms, 3)
+        
+        m = sc.masses
+        s2u_map = sc.s2u_map
+        spos = sc.scaled_positions
+        
+        # Calculation follows spgrep-modulation phase convention
+        # R_l + r_basis = spos @ supercell_lattice
+        # q . (spos @ supercell_lattice) = q . (spos @ supercell_matrix @ primitive_lattice)
+        # Since q is in primitive reciprocal basis: q . (x @ primitive_lattice) = q_frac . x_frac
+        phases = np.exp(2j * np.pi * np.dot(np.dot(spos, supercell_matrix.T), self._qpoint))
+        
+        # u_jl = e_j * exp(...) / sqrt(m_j * sc_size)
+        disps = e_reshaped[s2u_map] * (phases[:, None] / np.sqrt(m[:, None] * sc_size))
+        
+        # Real part is the actual displacement
+        real_disps = np.real(disps)
+        max_d = np.max(np.linalg.norm(real_disps, axis=1))
+        if max_d > 1e-10:
+            real_disps *= (amplitude / max_d)
+            
+        # Create a copy and apply displacements
+        modulated_sc = sc.copy()
+        modulated_sc.positions += real_disps
+        
+        return modulated_sc
 
 
     # --- New Query Methods ---
@@ -513,14 +592,14 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
                 disps[:, j*3:(j+1)*3] = eigvecs[:, j*3:(j+1)*3] / mass_factor
         return disps
 
-    def _get_labels_list(self, label_attr):
+    def _get_labels_list(self, label_attr) -> List[Optional[str]]:
         # Helper to unpack degenerate labels
-        raw_labels = [None] * len(self._freqs)
+        raw_labels = cast(List[Optional[str]], [None] * len(self._freqs))
         seq = getattr(self, label_attr, None)
         if seq is None:
             return raw_labels
         
-        mode_to_degset = {}
+        mode_to_degset: dict[int, int] = {}
         if self._degenerate_sets is not None:
             for set_idx, deg_set in enumerate(self._degenerate_sets):
                 for mode_idx in deg_set:
@@ -796,18 +875,11 @@ def get_special_qpoints(primitive_atoms, symprec=1e-5) -> list[dict]:
         - qpoint_input: The q-point coordinates in the input cell's reciprocal basis
     """
     try:
-        try:
-            from irreptables.irreps import IrrepTable
-        except ImportError:
-            from irreptables import IrrepTable
+        from irreptables.irreps import IrrepTable
     except ImportError:
-        raise ImportError("The 'irrep' package is required to get special q-points.")
+        from irreptables import IrrepTable  # type: ignore
 
-    # Initialize SpaceGroup which computes refUC (transformation to standard BCS cell)
-    try:
-        from irrep.spacegroup import SpaceGroup as SpaceGroupIrreps
-    except ImportError:
-        pass
+    from irrep.spacegroup_irreps import SpaceGroupIrreps
     
     cell = (primitive_atoms.cell, primitive_atoms.scaled_positions, primitive_atoms.numbers)
     sg = SpaceGroupIrreps.from_cell(
