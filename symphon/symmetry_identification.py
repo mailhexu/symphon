@@ -154,14 +154,16 @@ def _detect_centering_translations(translations: np.ndarray, symprec: float = 1e
     
     if has_I:
         return 'I'
+    if has_A and has_B and has_C:
+        return 'F'
     if has_A:
         return 'A'
     if has_B:
         return 'B'
     if has_C:
         return 'C'
-    
-    return None
+    return 'P'
+
 
 def _get_supercell_matrix_from_qpoint(qpoint: np.ndarray, max_denom: int = 12) -> np.ndarray:
     """Get supercell matrix S such that S @ q is commensurate (integer)."""

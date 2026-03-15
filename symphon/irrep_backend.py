@@ -63,7 +63,7 @@ class IrRepsIrrep:
             from irreptables.irreps import IrrepTable
         except ImportError:
             from irreptables import IrrepTable
-        table = IrrepTable(sg.number_str, sg.spinor)
+        table = IrrepTable(str(self._spacegroup_number), sg.spinor)
         refUC = sg.refUC
         refUCTinv = np.linalg.inv(refUC.T)
         
@@ -155,105 +155,180 @@ class IrRepsIrrep:
                 print(f"    Singles: {singles}, Pairs: {pairs}")
         
         # 5. Calculate phonon representation matrices for each block
-        self._block_matrices, self._little_group_indices = self._calculate_phonon_representations(sg)
-        block_matrices = self._block_matrices
-        little_group_indices = self._little_group_indices
+        # 5. Try different phase conventions to find the best match
+        best_irreps = None
+        best_count = -1
+        best_conv = self._phase_convention
+        
+        # Test both 'r' and 'R' gauges
+        test_conventions = ['r', 'R']
+        # If one was already specified, try it first
+        if self._phase_convention in test_conventions:
+            test_conventions.remove(self._phase_convention)
+            test_conventions.insert(0, self._phase_convention)
+            
+        # Get irreps from the table for character matching
+        irreps_in_table = [irr for irr in table.irreps if irr.kpname == kpname]
+        
+        for conv in test_conventions:
+            self._phase_convention = conv
+            if self._log_level > 1:
+                print(f"\nTesting phase convention: '{conv}'")
+            
+            # 5.1 Calculate phonon representation matrices for each block
+            block_matrices, little_group_indices, mapping_to_table = self._calculate_phonon_representations(sg, table=table)
+            
+            # 5.2 Match blocks with BCS labels
+            current_irreps = []
+            labeled_count = 0
+            num_little = len(little_group_indices)
 
-        # 6. Match blocks with BCS labels and identify OPDs
-        self._irreps = []
-        for block_idx, block in enumerate(self._degenerate_sets):
-            block_size = len(block)
-            
-            # Match with BCS characters first to get the label
-            best_match_label = None
-            best_irrep_dim = None
-            max_overlap = 0
-            
-            # Map little_group_indices to BCS indices (1-based)
-            bcs_indices = [idx + 1 for idx in little_group_indices]
-            
-            for label, table_chars in bcs_table.items():
-                # Check irrep dimension from identity character
-                identity_char = table_chars.get(1, list(table_chars.values())[0])
-                irrep_dim = int(round(abs(identity_char)))
+            for block_idx, block in enumerate(self._degenerate_sets):
+                block_mats = block_matrices[block_idx]
+                block_size = len(block)
+                matched_labels = []
+                total_irrep_dim = 0
                 
-                g = len(table_chars)
-                overlap = 0
-                for i_lg, i_bcs in enumerate(bcs_indices):
-                    if i_bcs in table_chars:
-                        # Tr(M(g)) = sum of diagonal elements
-                        tr_M = np.trace(block_matrices[block_idx][i_lg])
-                        overlap += np.conj(table_chars[i_bcs]) * tr_M
+                # Calculate characters for this block
+                chars_calc = [np.trace(block_mats[i]) for i in range(num_little)]
                 
-                n = overlap / g
-                match_val = np.abs(n)
+                if self._log_level > 1:
+                    print(f"    Block {block_idx} (dim {block_size}): matching with table...")
+
+                # Match operations by rotation AND translation in BCS frame
+                # Transform each sg.symmetries op to BCS frame and match to table
+                refUC = sg.refUC
+                shiftUC = sg.shiftUC
+                refUCinv = np.linalg.inv(refUC)
+                rot_trans_to_bcs_idx = {}
+                for i_tab, sym_tab in enumerate(table.symmetries):
+                    key = (tuple(sym_tab.R.flatten().tolist()), tuple((sym_tab.t % 1.0).tolist()))
+                    rot_trans_to_bcs_idx[key] = i_tab + 1
                 
-                if match_val > max_overlap:
-                    max_overlap = match_val
-                    best_match_label = label
-                    best_irrep_dim = irrep_dim
-            
-            # 7. Identify OPD if label found
-            is_gamma = (np.abs(self._qpoint) < self._symprec).all()
-            threshold = 0.8 if is_gamma else 0.5
-            
-            opds = [None] * block_size
-            isotropy_sgs = ["-"] * block_size
-            
-            U = None
-            if best_match_label and max_overlap > threshold:
-                # Get reference matrices from spgrep for this irrep
-                try:
-                    ref_matrices = self._get_reference_matrices(sg, little_group_indices, best_match_label)
+                for irr in irreps_in_table:
+                    # Allow matching composites if same dim
+                    if irr.dim > block_size:
+                        continue
                     
-                    if ref_matrices is not None and best_irrep_dim == block_size:
-                        # Solve D(g) U = U M(g) for unitary mapping U
-                        # Only possible when irrep dimension matches block size
-                        U = self._solve_unitary_mapping(ref_matrices, block_matrices[block_idx])
+                    overlap = 0
+                    valid_match = True
+                    for idx, isym in enumerate(little_group_indices):
+                        sym = sg.symmetries[isym]
+                        rot_prim = sym.rotation
+                        trans_prim = sym.translation
                         
-                        if U is not None:
-                            # Rotate eigenvectors to match the standard irrep basis
-                            self._eigvecs[:, block] = self._eigvecs[:, block] @ U.conj().T
-                            for i in range(block_size):
-                                unit_vec = np.zeros(block_size, dtype=complex)
-                                unit_vec[i] = 1.0
-                                opds[i] = self._column_to_opd_symbolic(unit_vec)
-                                
-                                # Identify daughter space group
-                                try:
-                                    from .symmetry_identification import get_isotropy_subgroup
-                                    parent_lattice = self._primitive.cell
-                                    # ref_matrices are indexed in sg.symmetries order.
-                                    # Use sg.symmetries directly (same ordering as BCS/spgrep).
-                                    little_rots = np.array([sg.symmetries[idx].rotation for idx in little_group_indices], dtype=int)
-                                    little_trans = np.array([sg.symmetries[idx].translation for idx in little_group_indices], dtype=float)
-                                    
-                                    sg_num, sg_sym = get_isotropy_subgroup(
-                                        parent_lattice,
-                                        little_rots,
-                                        little_trans,
-                                        self._qpoint,
-                                        ref_matrices,
-                                        unit_vec,
-                                        symprec=self._symprec,
-                                    )
-                                    isotropy_sgs[i] = f"{sg_sym}(#{sg_num})"
-                                except Exception:
-                                    isotropy_sgs[i] = "-"
-                except Exception as e:
-                    if self._log_level > 0:
-                        print(f"  Debug: Backend failed for block {block}: {e}")
-
-            # Always add entries for all modes in this block
-            for i in range(block_size):
-                item = {
-                    "label": best_match_label if max_overlap > threshold else None,
-                    "opd": opds[i] if opds[i] is not None else "-",
-                    "opd_num": U[:, i] if U is not None else None,
-                    "daughter_sg": isotropy_sgs[i]
-                }
-                self._irreps.append(item)
+                        # Transform to BCS frame
+                        rot_bcs = np.round(refUCinv @ rot_prim @ refUC).astype(int)
+                        trans_bcs = (refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC)) % 1.0
+                        
+                        key = (tuple(rot_bcs.flatten().tolist()), tuple(trans_bcs.tolist()))
+                        bcs_idx = rot_trans_to_bcs_idx.get(key, -1)
+                        if bcs_idx == -1:
+                            valid_match = False
+                            break
+                        val = chars_calc[idx]
+                        table_char = irr.characters.get(bcs_idx, 0)
+                        overlap += np.conj(table_char) * val
                     
+                    if not valid_match:
+                        continue
+                        
+                    n = overlap / num_little
+                    # n should be an integer (how many times this irrep is in the block)
+                    count = int(round(np.real(n)))
+                    if count > 0 and np.abs(n - count) < 0.2:
+                        for _ in range(count):
+                            matched_labels.append(irr.name)
+                            total_irrep_dim += irr.dim
+                    
+                    if self._log_level > 1 and irr.kpname == kpname:
+                        print(f"      - {irr.name}: match_val={np.abs(n):.4f} (overlap={overlap:.3f}, g={num_little})")
+
+                # spgrep fallback
+                if not matched_labels and HAS_SPGREP:
+                    # Create a mini-bcs-table for label matching
+                    mini_bcs_table = {irr.name: irr.characters for irr in irreps_in_table}
+                    best_spgrep_label = self._label_block_with_spgrep(sg, little_group_indices, block_mats, mini_bcs_table)
+                    if best_spgrep_label:
+                        matched_labels = [best_spgrep_label]
+                        total_irrep_dim = block_size
+                
+                # Store results for this gauge
+                opds = [None] * block_size
+                isotropy_sgs = ["-"] * block_size
+                U = None
+                
+                if matched_labels:
+                    labeled_count += 1
+                    # Build combined label
+                    from collections import Counter
+                    counts = Counter(matched_labels)
+                    sorted_unique = sorted(counts.keys())
+                    match_label = "+".join([f"{counts[l]}*{l}" if counts[l] > 1 else l for l in sorted_unique])
+                    
+                    # Identify OPD if labels found
+                    if total_irrep_dim == block_size:
+                        try:
+                            # Use spgrep for reference matrices if possible
+                            if len(matched_labels) == 1:
+                                ref_mats = self._get_reference_matrices(sg, little_group_indices, matched_labels[0])
+                            else:
+                                ref_mats = self._get_combined_reference_matrices(sg, little_group_indices, matched_labels)
+                            
+                            if ref_mats is not None:
+                                U = self._solve_unitary_mapping(ref_mats, block_mats)
+                                if U is not None:
+                                    for i in range(block_size):
+                                        unit_vec = np.zeros(block_size, dtype=complex)
+                                        unit_vec[i] = 1.0
+                                        opds[i] = self._column_to_opd_symbolic(unit_vec)
+                                        
+                                        try:
+                                            from .symmetry_identification import get_isotropy_subgroup
+                                            parent_lattice = self._primitive.cell
+                                            little_rots = np.array([sg.symmetries[idx].rotation for idx in little_group_indices], dtype=int)
+                                            little_trans = np.array([sg.symmetries[idx].translation for idx in little_group_indices], dtype=float)
+                                            
+                                            sg_num, sg_sym = get_isotropy_subgroup(
+                                                parent_lattice,
+                                                little_rots,
+                                                little_trans,
+                                                self._qpoint,
+                                                ref_mats,
+                                                unit_vec,
+                                                symprec=self._symprec,
+                                            )
+                                            isotropy_sgs[i] = f"{sg_sym}(#{sg_num})"
+                                        except Exception:
+                                            pass
+                        except Exception:
+                            pass
+                else:
+                    match_label = None
+
+                for i in range(block_size):
+                    item = {
+                        "label": match_label,
+                        "opd": opds[i] if opds[i] is not None else "-",
+                        "opd_num": U[:, i] if U is not None else None,
+                        "daughter_sg": isotropy_sgs[i]
+                    }
+                    current_irreps.append(item)
+                    
+            if labeled_count > best_count:
+                best_count = labeled_count
+                best_irreps = current_irreps
+                best_conv = conv
+            
+            # If we labeled all blocks, stop searching
+            if labeled_count == len(self._degenerate_sets):
+                break
+                
+        self._irreps = best_irreps
+        self._phase_convention = best_conv
+        if self._log_level > 0:
+            print(f"Final phase convention: '{best_conv}' ({best_count}/{len(self._degenerate_sets)} blocks labeled)")
+            
         return True
 
     def _get_reference_matrices(self, sg, little_group_indices: list[int], label: str):
@@ -369,8 +444,63 @@ class IrRepsIrrep:
             print(f"  Matched spgrep irrep for {label}: overlap={best_match:.4f}")
         
         return best_irrep_mats
+        
+    def _get_combined_reference_matrices(self, sg, little_group_indices, labels):
+        """Build combined reference matrices for a list of irrep labels (reducible block)."""
+        all_refs = []
+        for label in labels:
+            ref = self._get_reference_matrices(sg, little_group_indices, label)
+            if ref is None:
+                return None
+            all_refs.append(ref)
+            
+        # all_refs is list of (n_lg, d_i, d_i)
+        # We want (n_lg, total_dim, total_dim)
+        n_lg = all_refs[0].shape[0]
+        total_dim = sum(r.shape[1] for r in all_refs)
+        combined = np.zeros((n_lg, total_dim, total_dim), dtype=complex)
+        curr = 0
+        for r in all_refs:
+            d = r.shape[1]
+            combined[:, curr:curr+d, curr:curr+d] = r
+            curr += d
+        return combined
 
-
+    def _label_block_with_spgrep(self, sg, little_group_indices, block_matrices, bcs_table):
+        """Use spgrep to identify the best label for a phonon block if manual matching fails."""
+        if not HAS_SPGREP:
+            return None
+            
+        # Calc characters of the block (traces of matrices)
+        calc_chars = np.trace(block_matrices, axis1=1, axis2=2)
+        n_lg = len(calc_chars)
+        
+        # Build character vectors from the BCS table for matching
+        best_label = None
+        max_overlap = 0
+        
+        bcs_indices = [idx + 1 for idx in little_group_indices]
+        
+        for label, table_chars in bcs_table.items():
+            ref_chars = []
+            for bcs_idx in bcs_indices:
+                ref_chars.append(table_chars.get(bcs_idx, 0))
+            ref_chars = np.array(ref_chars, dtype=complex)
+            
+            # Simple character overlap
+            overlap = np.abs(np.vdot(ref_chars, calc_chars)) / n_lg
+            
+            # Divide by product of norms? No, n = 1/g sum chi_p chi_i*
+            # multiplicity = overlap / dim_irrep? No, the trace of block is sum of traces.
+            # So multiplicity = overlap.
+            
+            if overlap > max_overlap:
+                max_overlap = overlap
+                best_label = label
+                
+        if max_overlap > 0.8:
+            return best_label
+        return None
 
     def _solve_unitary_mapping(self, D, M):
         """Solve D(g) U = U M(g) for the unitary matrix U."""
@@ -472,18 +602,15 @@ class IrRepsIrrep:
 
         return '(' + ', '.join(param_labels) + ')'
 
-    def _calculate_phonon_representations(self, sg):
-        """Calculate the full representation matrices M(g) for each degenerate block."""
+    def _calculate_phonon_representations(self, sg, table=None):
+        """Calculate representation matrices M(g) for each phonon block."""
         num_atoms = len(self._primitive.scaled_positions)
         positions = self._primitive.scaled_positions
+        L = self._primitive.cell
+        Linv = np.linalg.inv(L)
+        q = self._qpoint
         
-        # Identify little group of q
-        little_group_indices = []
-        for i, sym in enumerate(sg.symmetries):
-            dq = np.dot(sym.rotation, self._qpoint) - self._qpoint
-            if np.allclose(dq - np.round(dq), 0, atol=1e-5):
-                little_group_indices.append(i)
-        
+        # 1. Coordinate frame and origin shift
         is_gamma = (np.abs(self._qpoint) < self._symprec).all()
         refUC = sg.refUC
         shiftUC = sg.shiftUC
@@ -492,27 +619,46 @@ class IrRepsIrrep:
         if is_gamma:
             positions_work = positions
             positions_work_unmodded = positions
-            q_work = self._qpoint
+            q_work = q
             use_bcs_frame = False
         else:
+            # Transform to BCS frame
             positions_bcs_unmodded = np.array([(refUCinv @ (p - shiftUC)) for p in positions])
-            positions_work = positions_bcs_unmodded % 1
             positions_work_unmodded = positions_bcs_unmodded
-            q_work = refUC.T @ self._qpoint
+            positions_work = positions_bcs_unmodded % 1.0
+            q_work = refUC.T @ q
             use_bcs_frame = True
-                
-        num_little = len(little_group_indices)
-        L = self._primitive.cell
-        Linv = np.linalg.inv(L)
+
+        q_work_prim = q_work
         
         if use_bcs_frame:
-            L_bcs = L @ refUC
-            L_bcs_inv = np.linalg.inv(L_bcs)
+            # L_bcs should be the lattice in standard setting
+            # If L_prim = refUC @ L_std, then L_std = refUCinv @ L_prim
+            L_bcs = refUCinv @ L
+            L_bcs_inv = np.linalg.pinv(L_bcs)
         else:
             L_bcs = L
             L_bcs_inv = Linv
 
+        # 3. Symmetry operations preparation
+        little_group_indices = []
+        for i_sym, sym in enumerate(sg.symmetries):
+            # Check if this operation is a little group operation for q
+            # R^T q = q + G
+            diff = (sym.rotation.T @ q - q)
+            if np.allclose(diff - np.round(diff), 0, atol=self._symprec):
+                little_group_indices.append(i_sym)
+        
+        num_little = len(little_group_indices)
         sym_ops = []
+        mapping_to_table = [] # Will store (idx_in_lg, idx_in_table)
+        
+        # Pre-process table symmetries for faster matching
+        table_syms_data = []
+        if table is not None:
+            for s in table.symmetries:
+                table_syms_data.append((s.R, s.t % 1.0))
+
         for idx, isym in enumerate(little_group_indices):
             sym = sg.symmetries[isym]
             rot_prim = sym.rotation
@@ -521,14 +667,41 @@ class IrRepsIrrep:
             if use_bcs_frame:
                 rot_work = np.round(refUCinv @ rot_prim @ refUC).astype(int)
                 trans_work = refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC)
+                # Standardize translation to [0, 1) to match table convention
+                # Round to avoid floating-point issues (e.g., -1e-24 % 1 = 1.0)
+                trans_work = np.round(trans_work, 10) % 1.0
             else:
                 rot_work = rot_prim
-                trans_work = trans_prim
+                trans_work = np.round(trans_prim, 10) % 1.0
             
-            R_cart = L_bcs.T @ rot_work @ L_bcs_inv.T
+            # Find matching index in table
+            it逐 = -1
+            if table is not None:
+                for i_tab, (R_tab, t_tab) in enumerate(table_syms_data):
+                    if np.array_equal(rot_work, R_tab):
+                        dt = trans_work - t_tab
+                        dt = dt - np.round(dt)
+                        if np.allclose(dt, 0, atol=self._symprec):
+                            it逐 = i_tab
+                            break
+            mapping_to_table.append(it逐)
+
+            # Compare with table if possible (debug)
+            if self._log_level > 1 and idx < 8:
+                if it逐 != -1:
+                    print(f"  Debug: op {isym+1} matches table op {it逐+1}")
+                else:
+                    print(f"  Debug: op {isym+1} NO MATCH in table! rot=\n{rot_work} trans={trans_work}")
+                    if table is not None and idx == 0:
+                         print(f"  First table op: R=\n{table_syms_data[0][0]} t={table_syms_data[0][1]}")
+
+            # Use phonopy's convention: R_cart = L @ rot @ inv(L)
+            # Always use primitive lattice for Cartesian rotation
+            R_cart = L @ rot_prim @ Linv
             
             perm = []
             phases = []
+            rot_work_inv = np.linalg.inv(rot_work)
             for k in range(num_atoms):
                 new_pos = rot_work @ positions_work[k] + trans_work
                 found = False
@@ -537,46 +710,73 @@ class IrRepsIrrep:
                     diff_round = np.round(diff)
                     if np.allclose(diff - diff_round, 0, atol=self._symprec):
                         perm.append(j)
-                        if self._phase_convention == 'R':
-                            phase = 1.0
-                        else:
-                            # Phase = exp(2πi·q·(R·τ_k + t - τ_j))
-                            # where j is the destination atom (perm maps k -> j)
-                            L_vec = rot_work @ positions_work_unmodded[k] + trans_work - positions_work_unmodded[j]
-                            phase = np.exp(2j * np.pi * np.dot(q_work, L_vec))
+                        # Phonopy's phase formula: exp(2πi * q @ (R^{-1} @ (τ_j - t) - τ_j))
+                        L_vec = rot_work_inv @ (positions_work_unmodded[j] - trans_work) - positions_work_unmodded[j]
+                        phase = np.exp(2j * np.pi * np.dot(q_work, L_vec))
                         phases.append(phase)
                         found = True
                         break
                 if not found:
-                    raise RuntimeError(f"Atom mapping failed for sym {sym.ind}")
-            sym_ops.append({'R_cart': R_cart, 'perm': perm, 'phases': phases})
+                    raise RuntimeError(f"Atom mapping failed for sym {isym}")
+            
+            sym_ops.append({
+                'R_cart': R_cart, 
+                'perm': perm, 
+                'phases': phases,
+                'rot_work': rot_work,
+                'trans_work': trans_work
+            })
 
+        # 4. Block matrix calculation
         all_block_matrices = []
         for block in self._degenerate_sets:
             dim = len(block)
             block_mats = np.zeros((num_little, dim, dim), dtype=complex)
             evs = self._eigvecs[:, block]
-            if use_bcs_frame:
+            
+            # Gauge transformation to 'r'-gauge if needed
+            # Phonopy is 'R'-gauge (v). 'r'-gauge is w = v * exp(-i q tau)
+            if self._phase_convention == 'r':
+                w_work = np.zeros((num_atoms, 3, dim), dtype=complex)
                 evs_reshaped = evs.reshape(num_atoms, 3, dim)
-                evs_work = np.zeros_like(evs_reshaped)
-                for d in range(dim):
-                    evs_work[:, :, d] = (refUCinv @ evs_reshaped[:, :, d].T).T
+                for k in range(num_atoms):
+                    phase_w = np.exp(-2j * np.pi * np.dot(q_work, positions_work[k]))
+                    for d in range(dim):
+                        vec = refUCinv @ evs_reshaped[k, :, d] if use_bcs_frame else evs_reshaped[k, :, d]
+                        w_work[k, :, d] = vec * phase_w
             else:
-                evs_work = evs.reshape(num_atoms, 3, dim)
+                # Keep 'R'-gauge (v)
+                w_work = np.zeros((num_atoms, 3, dim), dtype=complex)
+                evs_reshaped = evs.reshape(num_atoms, 3, dim)
+                for k in range(num_atoms):
+                    for d in range(dim):
+                        vec = refUCinv @ evs_reshaped[k, :, d] if use_bcs_frame else evs_reshaped[k, :, d]
+                        w_work[k, :, d] = vec
 
             for i_lg in range(num_little):
                 op = sym_ops[i_lg]
                 R_cart = op['R_cart']
                 perm = op['perm']
-                phases = op['phases']
                 
+                if self._phase_convention == 'r':
+                    # 'r'-gauge: D(g) = exp(-i Rq t) sum_k R exp(i G tau_j) delta_j,perm(k)
+                    q_prime = op['rot_work'] @ q_work
+                    global_phase = np.exp(-2j * np.pi * np.dot(q_prime, op['trans_work']))
+                    G = q_prime - q_work
+                else:
+                    global_phase = 1.0
+
                 for m in range(dim):
                     for n in range(dim):
                         val = 0
                         for k in range(num_atoms):
                             j = perm[k]
-                            val += phases[k] * np.dot(evs_work[j, :, m].conj(), R_cart @ evs_work[k, :, n])
+                            if self._phase_convention == 'r':
+                                phase_site = np.exp(2j * np.pi * np.dot(G, positions_work[j]))
+                                val += global_phase * phase_site * np.dot(w_work[j, :, m].conj(), R_cart @ w_work[k, :, n])
+                            else:
+                                val += op['phases'][k] * np.dot(w_work[j, :, m].conj(), R_cart @ w_work[k, :, n])
                         block_mats[i_lg, m, n] = val
             all_block_matrices.append(block_mats)
             
-        return all_block_matrices, little_group_indices
+        return all_block_matrices, little_group_indices, mapping_to_table
