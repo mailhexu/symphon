@@ -8,7 +8,7 @@ from symphon.abipy_io import read_phbst_freqs_and_eigvecs, ase_atoms_to_phonopy_
 from phonopy.phonon.degeneracy import degenerate_sets as get_degenerate_sets
 from phonopy.structure.cells import is_primitive_cell
 from phonopy import load as phonopy_load
-from .chiral_transitions import ChiralTransitionFinder, is_sohncke
+from .chiral_transitions import ChiralTransitionFinder, is_sohncke, get_sohncke_class, SohnckeClass
 
 
 class ReportingMixin:
@@ -283,7 +283,7 @@ class ReportingMixin:
                     header += f" {'IR':^4s} {'Raman':^6s}"
             
             if show_chiral_cols:
-                header += f" {'OPD':<15s} {'Daughter SG':<20s}"
+                header += f" {'OPD':<15s} {'Daughter SG':<20s} {'Chiral':<8s}"
             elif show_both:
                 header += f" {'OPD':<15s}"
             lines.append(header)
@@ -319,6 +319,28 @@ class ReportingMixin:
                 opd = row.get("opd") or "-"
                 dsg = row.get("daughter_sg") or "-"
                 line += f" {str(opd):<15s} {str(dsg):<20s}"
+                
+                # Check if daughter SG is Class II (chiral with pair)
+                if dsg != "-" and "(#" in dsg:
+                    try:
+                        # Extract SG number from string like "P2_12_12_1 (#19)" or "P4mm(#99)"
+                        import re
+                        match = re.search(r"\(#(\d+)\)", dsg)
+                        if match:
+                            sg_num = int(match.group(1))
+                            sohncke_cls = get_sohncke_class(sg_num)
+                            if sohncke_cls == SohnckeClass.CLASS_II:
+                                line += f" {'II-pair':<8s}"
+                            elif sohncke_cls == SohnckeClass.CLASS_III:
+                                line += f" {'III':<8s}"
+                            else:
+                                line += f" {'-':<8s}"
+                        else:
+                            line += f" {'-':<8s}"
+                    except (ValueError, IndexError):
+                        line += f" {'-':<8s}"
+                else:
+                    line += f" {'-':<8s}"
             elif show_both:
                 opd = row.get("opd") or "-"
                 line += f" {str(opd):<15s}"
