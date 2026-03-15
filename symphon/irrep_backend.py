@@ -166,12 +166,17 @@ class IrRepsIrrep:
             
             # Match with BCS characters first to get the label
             best_match_label = None
+            best_irrep_dim = None
             max_overlap = 0
             
             # Map little_group_indices to BCS indices (1-based)
             bcs_indices = [idx + 1 for idx in little_group_indices]
             
             for label, table_chars in bcs_table.items():
+                # Check irrep dimension from identity character
+                identity_char = table_chars.get(1, list(table_chars.values())[0])
+                irrep_dim = int(round(abs(identity_char)))
+                
                 g = len(table_chars)
                 overlap = 0
                 for i_lg, i_bcs in enumerate(bcs_indices):
@@ -186,6 +191,7 @@ class IrRepsIrrep:
                 if match_val > max_overlap:
                     max_overlap = match_val
                     best_match_label = label
+                    best_irrep_dim = irrep_dim
             
             # 7. Identify OPD if label found
             is_gamma = (np.abs(self._qpoint) < self._symprec).all()
@@ -200,8 +206,9 @@ class IrRepsIrrep:
                 try:
                     ref_matrices = self._get_reference_matrices(sg, little_group_indices, best_match_label)
                     
-                    if ref_matrices is not None:
+                    if ref_matrices is not None and best_irrep_dim == block_size:
                         # Solve D(g) U = U M(g) for unitary mapping U
+                        # Only possible when irrep dimension matches block size
                         U = self._solve_unitary_mapping(ref_matrices, block_matrices[block_idx])
                         
                         if U is not None:
