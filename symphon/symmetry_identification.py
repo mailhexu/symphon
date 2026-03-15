@@ -238,11 +238,11 @@ def get_isotropy_subgroup(
         found_preservation = False
         
         for n in lattice_trans_n:
-            combined_phase = np.exp(-2j * np.pi * np.dot(qpoint, t + n))
-            expected = opd * combined_phase
-            actual = np.dot(mat_j, opd)
+            phase = np.exp(-2j * np.pi * np.dot(qpoint, n))
+            mat = mat_j * phase
+            diff = np.linalg.norm(np.dot(mat, opd) - opd)
             
-            if np.allclose(actual, expected, atol=1e-4):
+            if diff < 1e-4:
                 r_prime = np.dot(S_inv, np.dot(r, S))
                 t_prime = np.dot(S_inv, t + n)
                 sc_rots.append(r_prime)

@@ -327,15 +327,16 @@ class IrRepsIrrep:
             if len(spgrep_lg_indices) != len(little_group_indices):
                 continue
                 
-            # Build mapping from Phonopy index to spgrep-lg index
-            # Both are subsets of the same original rotations list
+            # Build mapping from little_group_indices (irrep/BCS ordering) to
+            # spgrep_lg_indices (spgrep ordering). These use different orderings,
+            # so we must match by rotation matrix values, not by index.
             phonopy_to_spgrep = {}
+            spgrep_lg_rots = {i_sp: rotations[idx_sp] for i_sp, idx_sp in enumerate(spgrep_lg_indices)}
             for i_ph, idx_orig in enumerate(little_group_indices):
-                # idx_orig is the index in the original 'rotations' list
-                # Find where it is in spgrep_lg_indices
+                rot_ph = rotations[idx_orig]
                 found = False
-                for i_sp, idx_sp in enumerate(spgrep_lg_indices):
-                    if idx_sp == idx_orig:
+                for i_sp, sp_rot in spgrep_lg_rots.items():
+                    if np.array_equal(rot_ph, sp_rot):
                         phonopy_to_spgrep[i_ph] = i_sp
                         found = True
                         break
