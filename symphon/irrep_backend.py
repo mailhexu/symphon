@@ -7,6 +7,7 @@ from irrep.spacegroup_irreps import SpaceGroupIrreps
 from spgrep import get_spacegroup_irreps_from_primitive_symmetry
 
 from .chiral_transitions import opd_to_symbolic, HAS_SPGREP
+from .symmetry_identification import identify_spacegroup_from_operations, get_isotropy_subgroup
 
 class IrRepsIrrep:
     """
@@ -219,7 +220,7 @@ class IrRepsIrrep:
                         
                         # Transform to BCS frame
                         rot_bcs = np.round(refUCinv @ rot_prim @ refUC).astype(int)
-                        trans_bcs = (refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC)) % 1.0
+                        trans_bcs = np.round(refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC), 10) % 1.0
                         
                         key = (tuple(rot_bcs.flatten().tolist()), tuple(trans_bcs.tolist()))
                         bcs_idx = rot_trans_to_bcs_idx.get(key, -1)
@@ -266,41 +267,75 @@ class IrRepsIrrep:
                     sorted_unique = sorted(counts.keys())
                     match_label = "+".join([f"{counts[l]}*{l}" if counts[l] > 1 else l for l in sorted_unique])
                     
-                    # Identify OPD if labels found
+                    # Identify OPD using spgrep-modulation's IsotropyEnumerator
                     if total_irrep_dim == block_size:
                         try:
-                            # Use spgrep for reference matrices if possible
-                            if len(matched_labels) == 1:
-                                ref_mats = self._get_reference_matrices(sg, little_group_indices, matched_labels[0])
-                            else:
-                                ref_mats = self._get_combined_reference_matrices(sg, little_group_indices, matched_labels)
+                            from spgrep_modulation.isotropy import IsotropyEnumerator
+                            from .symmetry_identification import get_isotropy_subgroup
                             
-                            if ref_mats is not None:
-                                U = self._solve_unitary_mapping(ref_mats, block_mats)
-                                if U is not None:
-                                    for i in range(block_size):
-                                        unit_vec = np.zeros(block_size, dtype=complex)
-                                        unit_vec[i] = 1.0
-                                        opds[i] = self._column_to_opd_symbolic(unit_vec)
+                            little_rots = np.array([sg.symmetries[idx].rotation for idx in little_group_indices], dtype=int)
+                            little_trans = np.array([sg.symmetries[idx].translation for idx in little_group_indices], dtype=float)
+                            parent_lattice = self._primitive.cell
+                            
+                            # Process each irrep in matched_labels
+                            opd_idx = 0
+                            for lbl in matched_labels:
+                                ref_mats = self._get_reference_matrices(sg, little_group_indices, lbl)
+                                if ref_mats is None:
+                                    opd_idx += 1
+                                    continue
+                                
+                                irrep_dim = ref_mats.shape[1]
+                                
+                                try:
+                                    enumerator = IsotropyEnumerator(
+                                        little_rotations=little_rots,
+                                        little_translations=little_trans,
+                                        qpoint=self._qpoint,
+                                        small_rep=ref_mats,
+                                    )
+                                    
+                                    # Use first (maximal) isotropy subgroup
+                                    if enumerator.maximal_isotropy_subgroups:
+                                        subgroup_indices = enumerator.maximal_isotropy_subgroups[0]
+                                        subgroup_rots = little_rots[list(subgroup_indices)]
+                                        subgroup_trans = little_trans[list(subgroup_indices)]
                                         
-                                        try:
-                                            from .symmetry_identification import get_isotropy_subgroup
-                                            parent_lattice = self._primitive.cell
-                                            little_rots = np.array([sg.symmetries[idx].rotation for idx in little_group_indices], dtype=int)
-                                            little_trans = np.array([sg.symmetries[idx].translation for idx in little_group_indices], dtype=float)
-                                            
-                                            sg_num, sg_sym = get_isotropy_subgroup(
-                                                parent_lattice,
-                                                little_rots,
-                                                little_trans,
-                                                self._qpoint,
-                                                ref_mats,
-                                                unit_vec,
-                                                symprec=self._symprec,
+                                        # Get daughter SG from subgroup operations
+                                        sc_rots = []
+                                        sc_trans = []
+                                        refUC = sg.refUC
+                                        S_inv = np.linalg.inv(refUC)
+                                        for idx_sub in subgroup_indices:
+                                            r = little_rots[idx_sub]
+                                            t = little_trans[idx_sub]
+                                            r_prime = np.dot(S_inv, np.dot(r, refUC))
+                                            t_prime = np.dot(S_inv, t)
+                                            sc_rots.append(r_prime)
+                                            sc_trans.append(t_prime)
+                                        
+                                        if sc_rots:
+                                            sc_rots_arr = np.round(sc_rots).astype('intc')
+                                            sc_trans_arr = np.array(sc_trans, dtype='double')
+                                            sg_num, sg_sym = identify_spacegroup_from_operations(
+                                                parent_lattice, sc_rots_arr, sc_trans_arr,
+                                                self._symprec, use_supercell_type=True,
+                                                check_centering=True, parent_lattice=parent_lattice
                                             )
-                                            isotropy_sgs[i] = f"{sg_sym}(#{sg_num})"
-                                        except Exception:
-                                            pass
+                                            
+                                            # Get OPDs for this irrep
+                                            for subgroup_i, indices in enumerate(enumerator.maximal_isotropy_subgroups):
+                                                opds_enum = enumerator.order_parameter_directions[subgroup_i]
+                                                for opd_vec in opds_enum:
+                                                    if opd_idx < block_size:
+                                                        opds[opd_idx] = self._column_to_opd_symbolic(opd_vec)
+                                                        isotropy_sgs[opd_idx] = f"{sg_sym}(#{sg_num})"
+                                                        opd_idx += 1
+                                                        break  # Use first OPD per subgroup
+                                except Exception as e:
+                                    if self._log_level > 1:
+                                        print(f"  IsotropyEnumerator failed for {lbl}: {e}")
+                                    opd_idx += irrep_dim
                         except Exception:
                             pass
                 else:
