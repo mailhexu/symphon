@@ -228,7 +228,7 @@ class ReportingMixin:
                 print(f"Warning: Failed to compute chiral transitions: {e}")
             self._chiral_transitions_map = {}
 
-    def format_summary_table(self, include_header: bool = True, include_symmetry: bool = True, include_qpoint_cols: bool = True, show_chiral: bool = False) -> str:
+    def format_summary_table(self, include_header: bool = True, include_symmetry: bool = True, include_qpoint_cols: bool = True, show_chiral: bool = False, ground_truth=None) -> str:
         """Format the summary table as a human-readable string.
         
         Args:
@@ -236,16 +236,57 @@ class ReportingMixin:
             include_symmetry: Whether to include q-point, space group, and point group info
             include_qpoint_cols: Whether to include qx, qy, qz columns in the table
             show_chiral: Whether to include OPD and daughter SG chiral transition columns
+            ground_truth: Optional list of (freq, daughter_sgs) tuples from spgrep-modulation
         """
         summary = self.get_summary_table()
         show_chiral_cols = any(row.get("daughter_sg") != "-" for row in summary)
-        
+        show_ground_truth = ground_truth is not None
+
+        # Build a per-band GT lookup aligned by frequency.
+        # ground_truth is a flat list of (freq, daughter_sg) — one entry per OPD
+        # direction — already sorted by frequency.  We match each band to the
+        # nearest unmatched GT entry so that degenerate pairs stay correctly paired.
+        gt_by_band: list = [None] * len(summary)
+        if show_ground_truth and ground_truth:
+            remaining = list(enumerate(ground_truth))  # [(gt_idx, (freq, sg)), ...]
+            for band_i, row in enumerate(summary):
+                band_freq = row["frequency_thz"]
+                if not remaining:
+                    break
+                # Find the closest unmatched GT entry by frequency
+                best_j, best_dist = 0, abs(remaining[0][1][0] - band_freq)
+                for j, (_, (gf, _)) in enumerate(remaining):
+                    d = abs(gf - band_freq)
+                    if d < best_dist:
+                        best_dist, best_j = d, j
+                _, (_, gt_sg) = remaining.pop(best_j)
+                gt_by_band[band_i] = gt_sg
+
+        # Build degenerate-group lookup: band_i → list of band indices with same label+freq.
+        # Used for set-based match: a degenerate block matches if {our daughters} == {GT daughters}.
+        deg_groups: dict = {}  # band_i → [band_i, band_j, ...]
+        i = 0
+        while i < len(summary):
+            row = summary[i]
+            lbl = row.get("label") or ""
+            freq = row["frequency_thz"]
+            # Collect consecutive bands with same label and frequency (degenerate block)
+            j = i + 1
+            while (j < len(summary)
+                   and abs(summary[j]["frequency_thz"] - freq) < 1e-4
+                   and (summary[j].get("label") or "") == lbl):
+                j += 1
+            group = list(range(i, j))
+            for k in group:
+                deg_groups[k] = group
+            i = j
+
         # Decide which columns to show.
         # OPD column should show if show_chiral is requested OR if BCS labels/OPDs were computed.
         bcs_labels = getattr(self, "_irrep_labels_bcs", [])
         bcs_opds = getattr(self, "_irrep_opds_bcs", [])
         has_bcs_data = any(lbl for lbl in bcs_labels) or any(opd for opd in bcs_opds)
-        
+
         show_both = has_bcs_data
         show_activity = True
 
@@ -286,6 +327,11 @@ class ReportingMixin:
                 header += f" {'OPD':<15s} {'Daughter SG':<20s} {'Chiral':<8s}"
             elif show_both:
                 header += f" {'OPD':<15s}"
+            
+            # Add ground truth columns
+            if show_ground_truth:
+                header += f" {'GT Daughter SG':<25s} {'Match':<6s}"
+            
             lines.append(header)
 
         for i, row in enumerate(summary):
@@ -344,6 +390,28 @@ class ReportingMixin:
             elif show_both:
                 opd = row.get("opd") or "-"
                 line += f" {str(opd):<15s}"
+            
+            # Add ground truth data
+            gt_sg = gt_by_band[i] if show_ground_truth else None
+            if show_ground_truth:
+                gt_str = gt_sg if gt_sg else "-"
+                impl_sg = row.get("daughter_sg", "-")
+                if impl_sg != "-" and gt_sg:
+                    # Exact match
+                    if impl_sg == gt_sg:
+                        match_str = "Y"
+                    else:
+                        # Set-based match for degenerate blocks: {our daughters} == {GT daughters}
+                        group = deg_groups.get(i, [i])
+                        if len(group) > 1:
+                            our_set = {summary[k].get("daughter_sg", "-") for k in group}
+                            gt_set = {gt_by_band[k] for k in group if gt_by_band[k]}
+                            match_str = "Y" if our_set == gt_set else "N"
+                        else:
+                            match_str = "N"
+                else:
+                    match_str = "N"
+                line += f" {gt_str:<25s} {match_str:<6s}"
                 
             lines.append(line)
 

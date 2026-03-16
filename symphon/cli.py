@@ -261,6 +261,15 @@ def parse_args_phonopy() -> argparse.Namespace:
             "for each mode (OPD and daughter space group columns)."
         ),
     )
+    parser.add_argument(
+        "--compare-ground-truth",
+        action="store_true",
+        dest="compare_ground_truth",
+        help=(
+            "Compare daughter space groups with ground truth from spgrep-modulation. "
+            "Shows both implementation and ground truth results side-by-side."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -362,7 +371,20 @@ def main_phonopy() -> None:
             print(f"# k_BCS  = [{q_bcs[0]:.4f}, {q_bcs[1]:.4f}, {q_bcs[2]:.4f}]  (BCS label: {bcs_label})")
         
         print("=" * 60)
-        print(irr.format_summary_table(include_symmetry=False, include_qpoint_cols=False, show_chiral=args.chiral))
+        
+        # Compute ground truth if requested
+        ground_truth_data = None
+        if args.compare_ground_truth:
+            ground_truth_data = compute_ground_truth_daughters(
+                phonon, k, symprec
+            )
+        
+        print(irr.format_summary_table(
+            include_symmetry=False, 
+            include_qpoint_cols=False, 
+            show_chiral=args.chiral,
+            ground_truth=ground_truth_data
+        ))
         print()  # Add blank line between k-points
         
         # Optional verbose output
@@ -379,6 +401,92 @@ def main_phonopy() -> None:
                 print()
                 print(f"# Verbose output for {kpname}")
                 print(verbose_text, end="")
+
+
+def compute_ground_truth_daughters(phonon, qpoint, symprec=1e-5):
+    """
+    Compute ground truth daughter space groups using spgrep-modulation.
+
+    Returns a flat list of (freq, daughter_sg) — one entry per OPD direction
+    (i.e. one per band), sorted by frequency.  Degenerate eigenspaces of
+    dimension d contribute d consecutive entries at the same frequency, one
+    for each standard-basis OPD vector j=0…d-1.
+
+    Parameters
+    ----------
+    phonon : Phonopy
+    qpoint : tuple
+    symprec : float
+
+    Returns
+    -------
+    list of (float, str)  or  None on failure
+    """
+    try:
+        from spgrep_modulation.modulation import Modulation
+        import numpy as np
+        import spglib
+    except ImportError:
+        return None
+
+    try:
+        qpoint_arr = np.array(qpoint)
+
+        # Determine supercell matrix from q-point
+        denoms = [1, 1, 1]
+        for i, x in enumerate(qpoint_arr):
+            if np.isclose(x, 0, atol=1e-5):
+                continue
+            for d in range(1, 13):
+                if np.isclose((x * d) % 1.0, 0, atol=1e-5):
+                    denoms[i] = d
+                    break
+        supercell_matrix = np.diag(denoms)
+
+        md = Modulation.with_supercell_and_symmetry_search(
+            dynamical_matrix=phonon.dynamical_matrix,
+            supercell_matrix=supercell_matrix,
+            qpoint=qpoint_arr,
+            factor=phonon.unit_conversion_factor,
+            symprec=symprec,
+        )
+
+        # Build flat list: one (freq, daughter_sg) per OPD direction
+        flat = []
+        for i, (eigval, eigvecs, irrep) in enumerate(md.eigenspaces):
+            freq = md.eigvals_to_frequencies(eigval)
+            dim = eigvecs.shape[0]
+
+            for j in range(dim):
+                opd = np.zeros(dim, dtype=complex)
+                opd[j] = 1.0
+                amplitudes = list(np.abs(opd) * 0.1)
+                arguments = list(np.angle(opd))
+
+                daughter = "-"
+                try:
+                    cell, mod = md.get_modulated_supercell_and_modulation(
+                        frequency_index=i,
+                        amplitudes=amplitudes,
+                        arguments=arguments,
+                        return_cell=True,
+                    )
+                    dataset = spglib.get_symmetry_dataset(
+                        (cell.cell, cell.scaled_positions, cell.numbers),
+                        symprec=symprec,
+                    )
+                    if dataset is not None:
+                        daughter = f"{dataset.international}(#{dataset.number})"
+                except Exception:
+                    pass
+
+                flat.append((float(freq), daughter))
+
+        # Sort by frequency so alignment by position is robust
+        flat.sort(key=lambda x: x[0])
+        return flat
+    except Exception:
+        return None
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -284,28 +284,27 @@ class IrRepsIrrep:
                                 little_rots = np.array([sg.symmetries[idx].rotation for idx in little_group_indices], dtype=int)
                                 little_trans = np.array([sg.symmetries[idx].translation for idx in little_group_indices], dtype=float)
                                 
-                                if U is not None:
-                                    # For 1D irreps or when unitary mapping works
-                                    for i in range(block_size):
-                                        unit_vec = np.zeros(block_size, dtype=complex)
-                                        unit_vec[i] = 1.0
-                                        opds[i] = self._column_to_opd_symbolic(unit_vec)
-                                        
-                                        try:
-                                            sg_num, sg_sym = get_isotropy_subgroup(
-                                                parent_lattice,
-                                                little_rots,
-                                                little_trans,
-                                                self._qpoint,
-                                                ref_mats,
-                                                unit_vec,
-                                                symprec=self._symprec,
-                                            )
-                                            isotropy_sgs[i] = f"{sg_sym}(#{sg_num})"
-                                        except Exception:
-                                            pass
+                                irrep_dim = ref_mats.shape[1]
+                                
+                                if U is not None and irrep_dim == 1:
+                                    # For 1D irreps: only one possible OPD direction
+                                    unit_vec = np.array([1.0], dtype=complex)
+                                    opds[0] = self._column_to_opd_symbolic(unit_vec)
+                                    try:
+                                        sg_num, sg_sym = get_isotropy_subgroup(
+                                            parent_lattice,
+                                            little_rots,
+                                            little_trans,
+                                            self._qpoint,
+                                            ref_mats,
+                                            unit_vec,
+                                            symprec=self._symprec,
+                                        )
+                                        isotropy_sgs[0] = f"{sg_sym}(#{sg_num})"
+                                    except Exception:
+                                        pass
                                 else:
-                                    # For 2D+ irreps where unitary mapping fails, use IsotropyEnumerator
+                                    # For 2D+ irreps: use IsotropyEnumerator to find proper OPDs
                                     try:
                                         from spgrep_modulation.isotropy import IsotropyEnumerator
                                         enumerator = IsotropyEnumerator(
@@ -346,6 +345,13 @@ class IrRepsIrrep:
                             pass
                 else:
                     match_label = None
+
+                # For acoustic modes at Gamma (zero freq), no symmetry is broken.
+                # The isotropy subgroup is the full parent space group.
+                is_gamma = np.allclose(self._qpoint, 0.0, atol=1e-5)
+                if is_gamma and block and all(abs(self._freqs[j]) < 0.1 for j in block):
+                    parent_sg_str = f"{self._spacegroup_symbol}(#{self._spacegroup_number})"
+                    isotropy_sgs = [parent_sg_str] * block_size
 
                 for i in range(block_size):
                     item = {
@@ -454,12 +460,16 @@ class IrRepsIrrep:
             # spgrep_lg_indices (spgrep ordering). These use different orderings,
             # so we must match by rotation matrix values, not by index.
             phonopy_to_spgrep = {}
-            spgrep_lg_rots = {i_sp: rotations[idx_sp] for i_sp, idx_sp in enumerate(spgrep_lg_indices)}
+            spgrep_lg_ops = {
+                i_sp: (rotations[idx_sp], translations[idx_sp])
+                for i_sp, idx_sp in enumerate(spgrep_lg_indices)
+            }
             for i_ph, idx_orig in enumerate(little_group_indices):
                 rot_ph = rotations[idx_orig]
+                trans_ph = translations[idx_orig]
                 found = False
-                for i_sp, sp_rot in spgrep_lg_rots.items():
-                    if np.array_equal(rot_ph, sp_rot):
+                for i_sp, (sp_rot, sp_trans) in spgrep_lg_ops.items():
+                    if np.array_equal(rot_ph, sp_rot) and np.allclose(trans_ph % 1.0, sp_trans % 1.0, atol=1e-5):
                         phonopy_to_spgrep[i_ph] = i_sp
                         found = True
                         break
