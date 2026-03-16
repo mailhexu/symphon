@@ -134,3 +134,6 @@ ENV/
 # Test results
 test_results/
 .pytest_cache/
+
+# Temporary debug files
+.tmp/
