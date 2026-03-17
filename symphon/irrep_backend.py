@@ -667,42 +667,27 @@ class IrRepsIrrep:
         shiftUC = sg.shiftUC
         refUCinv = np.linalg.inv(refUC)
         
+        # BCS frame transformation for non-Gamma points
+        # Used only for eigenvector transformation and character table matching
         if is_gamma:
-            positions_work = positions
-            positions_work_unmodded = positions
             q_work = q
             use_bcs_frame = False
         else:
-            # Transform to BCS frame
-            positions_bcs_unmodded = np.array([(refUCinv @ (p - shiftUC)) for p in positions])
-            positions_work_unmodded = positions_bcs_unmodded
-            positions_work = positions_bcs_unmodded % 1.0
             q_work = refUC.T @ q
             use_bcs_frame = True
-
-        q_work_prim = q_work
-        
-        if use_bcs_frame:
-            # L_bcs should be the lattice in standard setting
-            # If L_prim = refUC @ L_std, then L_std = refUCinv @ L_prim
-            L_bcs = refUCinv @ L
-            L_bcs_inv = np.linalg.pinv(L_bcs)
-        else:
-            L_bcs = L
-            L_bcs_inv = Linv
 
         # 3. Symmetry operations preparation
         little_group_indices = []
         for i_sym, sym in enumerate(sg.symmetries):
             # Check if this operation is a little group operation for q
-            # R^T q = q + G
-            diff = (sym.rotation.T @ q - q)
+            # Convention: R @ q = q (mod G), matching irrep package
+            diff = (sym.rotation @ q - q)
             if np.allclose(diff - np.round(diff), 0, atol=self._symprec):
                 little_group_indices.append(i_sym)
         
         num_little = len(little_group_indices)
         sym_ops = []
-        mapping_to_table = [] # Will store (idx_in_lg, idx_in_table)
+        mapping_to_table = []
         
         # Pre-process table symmetries for faster matching
         table_syms_data = []
@@ -715,55 +700,51 @@ class IrRepsIrrep:
             rot_prim = sym.rotation
             trans_prim = sym.translation
             
+            # Transform operation to BCS frame for table matching
             if use_bcs_frame:
-                rot_work = np.round(refUCinv @ rot_prim @ refUC).astype(int)
-                trans_work = refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC)
-                # Standardize translation to [0, 1) to match table convention
-                # Round to avoid floating-point issues (e.g., -1e-24 % 1 = 1.0)
-                trans_work = np.round(trans_work, 10) % 1.0
+                rot_bcs = np.round(refUCinv @ rot_prim @ refUC).astype(int)
+                trans_bcs = refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC)
+                trans_bcs = np.round(trans_bcs, 10) % 1.0
             else:
-                rot_work = rot_prim
-                trans_work = np.round(trans_prim, 10) % 1.0
+                rot_bcs = rot_prim
+                trans_bcs = np.round(trans_prim, 10) % 1.0
             
-            # Find matching index in table
-            it逐 = -1
+            # Find matching index in table (use BCS frame operations)
+            it_tab = -1
             if table is not None:
                 for i_tab, (R_tab, t_tab) in enumerate(table_syms_data):
-                    if np.array_equal(rot_work, R_tab):
-                        dt = trans_work - t_tab
+                    if np.array_equal(rot_bcs, R_tab):
+                        dt = trans_bcs - t_tab
                         dt = dt - np.round(dt)
                         if np.allclose(dt, 0, atol=self._symprec):
-                            it逐 = i_tab
+                            it_tab = i_tab
                             break
-            mapping_to_table.append(it逐)
+            mapping_to_table.append(it_tab)
 
-            # Compare with table if possible (debug)
             if self._log_level > 1 and idx < 8:
-                if it逐 != -1:
-                    print(f"  Debug: op {isym+1} matches table op {it逐+1}")
+                if it_tab != -1:
+                    print(f"  Debug: op {isym+1} matches table op {it_tab+1}")
                 else:
-                    print(f"  Debug: op {isym+1} NO MATCH in table! rot=\n{rot_work} trans={trans_work}")
-                    if table is not None and idx == 0:
-                         print(f"  First table op: R=\n{table_syms_data[0][0]} t={table_syms_data[0][1]}")
+                    print(f"  Debug: op {isym+1} NO MATCH in table! rot=\n{rot_bcs} trans={trans_bcs}")
 
             # Use phonopy's convention: R_cart = L @ rot @ inv(L)
-            # Always use primitive lattice for Cartesian rotation
             R_cart = L @ rot_prim @ Linv
             
+            # Atom mapping in PRIMITIVE frame (always works)
             perm = []
             phases = []
-            rot_work_inv = np.linalg.inv(rot_work)
+            rot_prim_inv = np.linalg.inv(rot_prim)
             for k in range(num_atoms):
-                new_pos = rot_work @ positions_work[k] + trans_work
+                new_pos = rot_prim @ positions[k] + trans_prim
                 found = False
                 for j in range(num_atoms):
-                    diff = new_pos - positions_work[j]
+                    diff = new_pos - positions[j]
                     diff_round = np.round(diff)
                     if np.allclose(diff - diff_round, 0, atol=self._symprec):
                         perm.append(j)
-                        # Phonopy's phase formula: exp(2πi * q @ (R^{-1} @ (τ_j - t) - τ_j))
-                        L_vec = rot_work_inv @ (positions_work_unmodded[j] - trans_work) - positions_work_unmodded[j]
-                        phase = np.exp(2j * np.pi * np.dot(q_work, L_vec))
+                        # Phase: exp(2πi * q @ (R^{-1} @ (τ_j - t) - τ_j))
+                        L_vec = rot_prim_inv @ (positions[j] - trans_prim) - positions[j]
+                        phase = np.exp(2j * np.pi * np.dot(q, L_vec))
                         phases.append(phase)
                         found = True
                         break
@@ -774,8 +755,8 @@ class IrRepsIrrep:
                 'R_cart': R_cart, 
                 'perm': perm, 
                 'phases': phases,
-                'rot_work': rot_work,
-                'trans_work': trans_work
+                'rot_bcs': rot_bcs,
+                'trans_bcs': trans_bcs
             })
 
         # 4. Block matrix calculation
@@ -787,11 +768,16 @@ class IrRepsIrrep:
             
             # Gauge transformation to 'r'-gauge if needed
             # Phonopy is 'R'-gauge (v). 'r'-gauge is w = v * exp(-i q tau)
+            if use_bcs_frame:
+                positions_bcs = np.array([(refUCinv @ (p - shiftUC)) for p in positions])
+                positions_bcs_mod = positions_bcs % 1.0
+            
             if self._phase_convention == 'r':
                 w_work = np.zeros((num_atoms, 3, dim), dtype=complex)
                 evs_reshaped = evs.reshape(num_atoms, 3, dim)
                 for k in range(num_atoms):
-                    phase_w = np.exp(-2j * np.pi * np.dot(q_work, positions_work[k]))
+                    pos_for_phase = positions_bcs_mod[k] if use_bcs_frame else positions[k]
+                    phase_w = np.exp(-2j * np.pi * np.dot(q_work, pos_for_phase))
                     for d in range(dim):
                         vec = refUCinv @ evs_reshaped[k, :, d] if use_bcs_frame else evs_reshaped[k, :, d]
                         w_work[k, :, d] = vec * phase_w
@@ -811,8 +797,8 @@ class IrRepsIrrep:
                 
                 if self._phase_convention == 'r':
                     # 'r'-gauge: D(g) = exp(-i Rq t) sum_k R exp(i G tau_j) delta_j,perm(k)
-                    q_prime = op['rot_work'] @ q_work
-                    global_phase = np.exp(-2j * np.pi * np.dot(q_prime, op['trans_work']))
+                    q_prime = op['rot_bcs'] @ q_work
+                    global_phase = np.exp(-2j * np.pi * np.dot(q_prime, op['trans_bcs']))
                     G = q_prime - q_work
                 else:
                     global_phase = 1.0
@@ -823,7 +809,8 @@ class IrRepsIrrep:
                         for k in range(num_atoms):
                             j = perm[k]
                             if self._phase_convention == 'r':
-                                phase_site = np.exp(2j * np.pi * np.dot(G, positions_work[j]))
+                                pos_j = positions_bcs_mod[j] if use_bcs_frame else positions[j]
+                                phase_site = np.exp(2j * np.pi * np.dot(G, pos_j))
                                 val += global_phase * phase_site * np.dot(w_work[j, :, m].conj(), R_cart @ w_work[k, :, n])
                             else:
                                 val += op['phases'][k] * np.dot(w_work[j, :, m].conj(), R_cart @ w_work[k, :, n])

@@ -4,6 +4,7 @@ Provides a concise irreps summary by default and optional verbose output.
 """
 
 import argparse
+import numpy as np
 from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, find_highsym_qpoints_in_phbst, print_irreps_phonopy
 
 
@@ -323,13 +324,20 @@ def main_phonopy() -> None:
     irrep_table = IrrepTable(sg.number_str, False, v=args.log_level)
     
     # Collect unique high-symmetry points
+    # Skip k-points that are equivalent (mod 1) to already-seen ones
+    # Transform BCS k-points to primitive coordinates using refUC
+    refUCinv = np.linalg.inv(sg.refUC.T)
     high_sym_points = {}
+    seen_k_equiv = []
     for irrep in irrep_table.irreps:
         if hasattr(irrep, 'kpname') and irrep.kpname and hasattr(irrep, 'k'):
             kpname = irrep.kpname
-            k = tuple(irrep.k.tolist())
-            if kpname not in high_sym_points:
-                high_sym_points[kpname] = k
+            k_bcs = np.array(irrep.k.tolist())
+            k_prim = refUCinv @ k_bcs
+            k_equiv = tuple(np.round(k_prim - np.round(k_prim), 6))
+            if kpname not in high_sym_points and k_equiv not in seen_k_equiv:
+                high_sym_points[kpname] = tuple(k_prim.tolist())
+                seen_k_equiv.append(k_equiv)
     
     # Print header with space group info (once at the top)
     print(f"Space group: {sg.name}")
