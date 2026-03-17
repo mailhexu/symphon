@@ -15,4 +15,5 @@ fi
 #   - "III" for Class III Sohncke groups (chiral-supporting)
 #   - "-" for non-chiral groups (Class I)
 echo "Running phonopy-irreps with chiral analysis..."
-symphon phonopy-irreps --params phonopy_params.yaml --chiral --compare-ground-truth
+#symphon phonopy-irreps --params phonopy_params.yaml --chiral --compare-ground-truth
+symphon phonopy-irreps --params phonopy_params.yaml #--chiral --compare-ground-truth
