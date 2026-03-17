@@ -8,7 +8,7 @@ Expected behavior:
     frequencies, and IR/Raman activity.
 """
 
-from anaddb_irreps import print_irreps
+from symphon import print_irreps
 
 if __name__ == "__main__":
     # Simple usage with defaults

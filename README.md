@@ -1,16 +1,18 @@
-# anaddb_irreps
+# symphon
 
 A simple wrapper of the phonopy irreps module for finding irreducible representations of phonon modes in ABINIT's anaddb output.
 
 ## Features
 
+- **Automatic high-symmetry analysis**: Analyzes all high-symmetry k-points (GM, X, M, R, etc.) automatically
+- **Dual-label display at Gamma**: Shows both Mulliken (T1u, Eg, etc.) and BCS (GM4-, GM5+, etc.) notation side-by-side
+- **Spectroscopic activity**: Identifies IR- and Raman-active modes at Γ point
 - **Multiple input formats**: Supports both anaddb PHBST NetCDF files and phonopy params/YAML files
 - **Dual backend support**:
-  - `phonopy` backend: Standard Γ-point analysis with IR/Raman activity identification
-  - `irrep` backend: Non-Gamma point analysis using the `irrep` package
+  - `phonopy` backend: Γ-point analysis with IR/Raman activity (used automatically at Gamma)
+  - `irrep` backend: Non-Gamma point analysis using the `irrep` package (used automatically for other points)
 - **CLI and Python API**: Flexible usage through command-line tools or Python functions
 - **Complete symmetry information**: Reports both space group and point group for the crystal
-- **Spectroscopic activity**: Identifies IR- and Raman-active modes (at Γ point)
 
 ## Installation
 
@@ -18,24 +20,24 @@ A simple wrapper of the phonopy irreps module for finding irreducible representa
 
 Install from PyPI:
 ```bash
-pip install anaddb_irreps
+pip install symphon
 ```
 
 ### Optional Dependencies
 
 For **non-Gamma phonons** (k-points other than Γ), install with the `irrep` backend:
 ```bash
-pip install "anaddb_irreps[irrep]"
+pip install "symphon[irrep]"
 ```
 
 For **ABINIT support** (reading PHBST NetCDF files), install with the `abipy` optional dependency:
 ```bash
-pip install "anaddb_irreps[abipy]"
+pip install "symphon[abipy]"
 ```
 
 To install all optional dependencies:
 ```bash
-pip install "anaddb_irreps[irrep,abipy]"
+pip install "symphon[irrep,abipy]"
 ```
 
 ## Documentation
@@ -49,41 +51,98 @@ pip install "anaddb_irreps[irrep,abipy]"
 ### Python API
 
 ```python
-from anaddb_irreps import print_irreps_phonopy
+from symphon import print_irreps_phonopy
 
-# Analyze Gamma point
-print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0])
-
-# Analyze non-Gamma point (requires irrep backend)
-print_irreps_phonopy(
-    "phonopy_params.yaml",
-    qpoint=[0.5, 0.5, 0],
-    backend="irrep",
-    kpname="M"
-)
+# Analyze any q-point (backend auto-selected)
+print_irreps_phonopy("phonopy_params.yaml", qpoint=[0, 0, 0])  # Gamma
+print_irreps_phonopy("phonopy_params.yaml", qpoint=[0.5, 0.5, 0])  # M point
 ```
 
 ### Command Line
 
+#### Unified CLI (symphon)
+
+All functionality is available through the unified `symphon` CLI:
+
 ```bash
-# Analyze Gamma point
-phonopy-irreps --params phonopy_params.yaml --qpoint 0 0 0
+# Phonon irreps from phonopy (auto-discovers all high-symmetry k-points)
+symphon phonopy-irreps --params phonopy_params.yaml
 
-# Analyze non-Gamma point
-phonopy-irreps --params phonopy_params.yaml --qpoint 0 0.5 0 --backend irrep --kpname X
+# Phonon irreps from anaddb (auto-discovers high-symmetry q-points)
+symphon anaddb-irreps --phbst run_PHBST.nc
+
+# With chiral transition analysis
+symphon phonopy-irreps --params phonopy_params.yaml --chiral
+
+# Find chiral phase transitions from space groups
+symphon find-chiral-transition --sg 136
+
+# Magnetic chirality analysis
+symphon magnetic-chiral --structure POSCAR --qpoint 0 0 0.5 --mag-sites 0,1
+symphon abstract-magnetic --spg 221 --qpoint 0 0 0
+symphon msg 18.16
 ```
 
-## Output
+#### phonopy-irreps (Auto-discovery mode)
+
+```bash
+# Analyze all high-symmetry k-points automatically
+symphon phonopy-irreps --params phonopy_params.yaml
+
+# Output shows all high-symmetry points:
+# - GM point: dual labels (Mulliken + BCS) + IR/Raman activity
+# - Other points (M, R, X, etc.): BCS labels
+```
+
+#### anaddb-irreps (Auto-discovery or manual mode)
+
+```bash
+# Auto-discover all high-symmetry q-points (using standalone command)
+anaddb-irreps --phbst run_PHBST.nc
+
+# Or using unified CLI
+symphon anaddb-irreps --phbst run_PHBST.nc
+
+# Or analyze specific q-point (0-based index)
+symphon anaddb-irreps --phbst run_PHBST.nc --q-index 0
+```
+
+## Output Examples
+
+### Automatic high-symmetry analysis (phonopy-irreps)
+
+When you run `phonopy-irreps --params phonopy_params.yaml`, it automatically:
+1. Discovers all high-symmetry k-points from the space group
+2. Shows dual labels (Mulliken + BCS) at Gamma point with IR/Raman activity
+3. Shows BCS labels for other high-symmetry points
 
 ```
+Space group: Pm-3m
+Found 4 high-symmetry points:
+  GM: k=(0.0, 0.0, 0.0)
+  M: k=(0.5, 0.5, 0.0)
+  R: k=(0.5, 0.5, 0.5)
+  X: k=(0.0, 0.5, 0.0)
+
+# GM point (k=(0.0, 0.0, 0.0))
+============================================================
+q-point: [0.0000, 0.0000, 0.0000]
+Space group: Pm-3m
+Point group: m-3m
+
+# qx      qy      qz      band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman
+ 0.0000  0.0000  0.0000     0     -6.0487      -201.76  T1u         GM4-         Y    .  
+ 0.0000  0.0000  0.0000     9      8.5335       284.65  T2u         GM5-         .    .  
+
+# X point (k=(0.0, 0.5, 0.0))
+============================================================
 q-point: [0.0000, 0.5000, 0.0000]
 Space group: Pm-3m
 Point group: m-3m
 
 # qx      qy      qz      band  freq(THz)   freq(cm-1)   label
-  0.0000  0.5000  0.0000     0     -4.8804      -162.79  X5+
-  0.0000  0.5000  0.0000     1     -4.8804      -162.79  X5+
-  0.0000  0.5000  0.0000     2      3.3171       110.65  X5-
+ 0.0000  0.5000  0.0000     0     -4.8804      -162.79  X5+
+ 0.0000  0.5000  0.0000     2      3.3171       110.65  X5-
 ```
 
 ## Examples
@@ -91,6 +150,28 @@ Point group: m-3m
 See `examples/MoS2_1T/` for a complete working example with MoS2 1T structure using anaddb output.
 
 See `docs/irreps_guide.md` for BaTiO3 examples demonstrating both Gamma and non-Gamma point analysis.
+
+## Technical Notes
+
+### K-point Coordinate Systems
+
+The `irrep` backend requires careful handling of k-point coordinates:
+
+- **`irreptables` package**: Provides k-points in reference unit cell coordinates
+- **`irrep` package**: Expects k-points in primitive unit cell coordinates
+
+For certain space groups, a coordinate transformation is required. Currently implemented:
+
+- **Pnma (space group 62)**: Cyclic permutation `k_prim = (k_z, k_x, k_y)`
+  - Transformation matrix: `[[0,0,1], [1,0,0], [0,1,0]]`
+  - Verified with TmFeO3 structure (all 8 high-symmetry points work correctly)
+
+### Symmetry Precision
+
+The `symprec` parameter controls tolerance for symmetry detection and atom mapping:
+- Default: `1e-5` (standard phonopy default)
+- Both phonopy and irrep backends now use the same `symprec` value consistently
+- For low-symmetry or distorted structures, increase `symprec` (e.g., `1e-2` or `1e-3`)
 
 ## License
 

@@ -1,6 +1,6 @@
 # Label PHBST Example
 
-This directory demonstrates how to use `anaddb_irreps` to label phonon modes from ABINIT's PHBST NetCDF output.
+This directory demonstrates how to use `symphon` to label phonon modes from ABINIT's PHBST NetCDF output.
 
 ## Files
 
@@ -72,4 +72,4 @@ phbst_fname = 'path/to/your_PHBST.nc'
 - The LAO_PHBST.nc file contains 172 q-points along a path from Gamma to X to M
 - Gamma point analysis uses phonopy backend (optimal for Γ-point)
 - Non-Gamma point analysis uses irrep backend (required for k-points other than Γ)
-- The irrep backend requires installation: `pip install "anaddb_irreps[irrep]"`
+- The irrep backend requires installation: `pip install "symphon[irrep]"`

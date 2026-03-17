@@ -1,6 +1,6 @@
 # Irreducible Representation Labeling Guide
 
-This guide describes the mathematical foundations and usage of the irrep labeling capabilities in `anaddb_irreps`, particularly for non-Gamma ($q \neq 0$) phonons.
+This guide describes the mathematical foundations and usage of the irrep labeling capabilities in `symphon`, particularly for non-Gamma ($q \neq 0$) phonons.
 
 ## 1. Notation and Labels
 
@@ -63,7 +63,7 @@ BaTiO3 in its cubic phase (Space Group 221, $Pm\bar{3}m$) is an ideal test case.
 ### Gamma Point ($\Gamma$)
 The `phonopy` backend is the default and is best suited for the $\Gamma$ point:
 ```bash
-phonopy-irreps --params BaTiO3_phonopy_params.yaml --qpoint 0 0 0
+symphon phonopy-irreps --params BaTiO3_phonopy_params.yaml
 ```
 
 **Raw CLI Output:**
@@ -95,9 +95,9 @@ Point group: m-3m
 - Note that the acoustic modes (bands 3-5 at 0 THz) and the unstable soft modes (bands 0-2) are all correctly identified.
 
 ### X Point $(0, 0.5, 0)$
-To label the X point, we use the `irrep` backend and specify the `kpname`:
+The X point is automatically analyzed when running the auto-discovery mode:
 ```bash
-phonopy-irreps --params BaTiO3_phonopy_params.yaml --qpoint 0 0.5 0 --backend irrep --kpname X
+symphon phonopy-irreps --params BaTiO3_phonopy_params.yaml
 ```
 
 **Raw CLI Output:**
@@ -129,8 +129,9 @@ Point group: Pm-3m
 - Note that the IR and Raman activity columns are omitted for non-Gamma backends as activity rules are typically defined for the $\Gamma$ point.
 
 ### M Point $(0.5, 0.5, 0)$
+The M point is also automatically analyzed:
 ```bash
-phonopy-irreps --params BaTiO3_phonopy_params.yaml --qpoint 0.5 0.5 0 --backend irrep --kpname M
+symphon phonopy-irreps --params BaTiO3_phonopy_params.yaml
 ```
 
 **Raw CLI Output:**
@@ -159,5 +160,5 @@ Point group: Pm-3m
 
 ### Tips for Success:
 1. **Symmetry Precision**: If the space group is not detected correctly, try adjusting `--symprec` (e.g., `1e-3`).
-2. **K-point Names**: Ensure the `--kpname` matches the label used in the BCS tables for that specific space group.
+2. **Auto-Discovery**: The `phonopy-irreps` command automatically analyzes all high-symmetry k-points, including GM, X, M, R, etc.
 3. **Degeneracy**: If modes that should be degenerate have slightly different frequencies, increase `--degeneracy-tolerance`.

@@ -8,7 +8,7 @@ Expected behavior:
     frequencies, and IR/Raman activity at the Gamma point.
 """
 
-from anaddb_irreps import print_irreps_phonopy
+from symphon import print_irreps_phonopy
 
 
 if __name__ == "__main__":
