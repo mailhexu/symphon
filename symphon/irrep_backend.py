@@ -47,15 +47,57 @@ class IrRepsIrrep:
         
         self._spacegroup_symbol = sg.name
         self._spacegroup_number = int(sg.number_str.split('.')[0])
-        self._degenerate_sets = degenerate_sets(self._freqs)
-        
-        # Get point group from symmetry operations
-        rotations = np.array([sym.rotation for sym in sg.symmetries], dtype=int)
+import sys
+import os
+import warnings
+
+
+_context_manager = None
+_redirected_stderr = False
+
+
+def _suppress_spglib_warnings():
+    """
+    Suppress warnings from spglib C library when the little group
+    operations don't form a recognizable point group.
+
+    These warnings are informational (not errors) and printed
+    directly to stderr by the C library. They can
+    be suppressed by redirecting stderr to /dev/null before
+    calling spglib functions that may trigger warnings.
+    """
+    # Save original stderr
+    _original_stderr = sys.stderr
+    
+    # Redirect stderr to /dev/null
+    sys.stderr = open(os.devnull, 'w')
+    _redirected_stderr = True
+     except Exception:
+        _redirected_stderr = False
+        raise RuntimeError("Failed to redirect stderr for spglib warning suppression")
+     finally:
+        if _redirected_stderr:
+            sys.stderr = _original_stderr
+            _redirected_stderr = False
+
+
+def _restore_stderr():
+    """Restore original stderr after processing."""
+    if _redirected_stderr:
+        sys.stderr = _original_stderr
+        _redirected_stderr = False
+
+
+def at with _suppress_spglib_warnings():
+    rotations = np.array([sym.rotation for sym in sg.symmetries], dtype=int)
+    with _suppress_spglib_warnings():
         pg_result = spglib.get_pointgroup(rotations)
-        if pg_result:
-            self._pointgroup_symbol = pg_result[0]
-        else:
-            self._pointgroup_symbol = None
+    _restore_stderr()
+    
+    if pg_result:
+        self._pointgroup_symbol = pg_result[0]
+    else:
+        self._pointgroup_symbol = None
         
         # 2. Get BCS character table for the q-point
         # Use refUC to find the matching label in the BCS table
