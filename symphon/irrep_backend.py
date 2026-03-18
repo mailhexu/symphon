@@ -2,11 +2,27 @@ import numpy as np
 from phonopy.phonon.degeneracy import degenerate_sets
 from ase.data import atomic_masses
 import logging
+import sys
+import os
+from contextlib import contextmanager
 import spglib
 from irrep.spacegroup_irreps import SpaceGroupIrreps
 from spgrep import get_spacegroup_irreps_from_primitive_symmetry
 
 from .chiral_transitions import opd_to_symbolic, HAS_SPGREP
+
+
+@contextmanager
+def _suppress_spglib_warnings():
+    """Suppress spglib C library warnings printed to stderr."""
+    devnull = open(os.devnull, 'w')
+    old_stderr = sys.stderr
+    sys.stderr = devnull
+    try:
+        yield
+    finally:
+        sys.stderr = old_stderr
+        devnull.close()
 
 class IrRepsIrrep:
     """
@@ -47,57 +63,14 @@ class IrRepsIrrep:
         
         self._spacegroup_symbol = sg.name
         self._spacegroup_number = int(sg.number_str.split('.')[0])
-import sys
-import os
-import warnings
-
-
-_context_manager = None
-_redirected_stderr = False
-
-
-def _suppress_spglib_warnings():
-    """
-    Suppress warnings from spglib C library when the little group
-    operations don't form a recognizable point group.
-
-    These warnings are informational (not errors) and printed
-    directly to stderr by the C library. They can
-    be suppressed by redirecting stderr to /dev/null before
-    calling spglib functions that may trigger warnings.
-    """
-    # Save original stderr
-    _original_stderr = sys.stderr
-    
-    # Redirect stderr to /dev/null
-    sys.stderr = open(os.devnull, 'w')
-    _redirected_stderr = True
-     except Exception:
-        _redirected_stderr = False
-        raise RuntimeError("Failed to redirect stderr for spglib warning suppression")
-     finally:
-        if _redirected_stderr:
-            sys.stderr = _original_stderr
-            _redirected_stderr = False
-
-
-def _restore_stderr():
-    """Restore original stderr after processing."""
-    if _redirected_stderr:
-        sys.stderr = _original_stderr
-        _redirected_stderr = False
-
-
-def at with _suppress_spglib_warnings():
-    rotations = np.array([sym.rotation for sym in sg.symmetries], dtype=int)
-    with _suppress_spglib_warnings():
-        pg_result = spglib.get_pointgroup(rotations)
-    _restore_stderr()
-    
-    if pg_result:
-        self._pointgroup_symbol = pg_result[0]
-    else:
-        self._pointgroup_symbol = None
+        
+        rotations = np.array([sym.rotation for sym in sg.symmetries], dtype=int)
+        with _suppress_spglib_warnings():
+            pg_result = spglib.get_pointgroup(rotations)
+        if pg_result:
+            self._pointgroup_symbol = pg_result[0]
+        else:
+            self._pointgroup_symbol = None
         
         # 2. Get BCS character table for the q-point
         # Use refUC to find the matching label in the BCS table
@@ -171,7 +144,10 @@ def at with _suppress_spglib_warnings():
         if self._log_level > 0:
             print(f"Using phase convention: '{self._phase_convention}'-gauge")
         
-        # 4. Apply force-pairing if needed
+        # 4. Initialize degenerate sets from frequencies
+        self._degenerate_sets = degenerate_sets(self._freqs)
+        
+        # 5. Apply force-pairing if needed
         if only_multidim and min_irrep_dim == 2:
             # Force pair consecutive modes for 2D irreps
             original_deg_sets = self._degenerate_sets
@@ -220,10 +196,20 @@ def at with _suppress_spglib_warnings():
             # 5.1 Calculate phonon representation matrices for each block
             block_matrices, little_group_indices, mapping_to_table = self._calculate_phonon_representations(sg, table=table)
             
+
             # 5.2 Match blocks with BCS labels
             current_irreps = []
             labeled_count = 0
             num_little = len(little_group_indices)
+
+            # Build rotation+translation → BCS table index map once per k-point
+            refUC = sg.refUC
+            shiftUC = sg.shiftUC
+            refUCinv = np.linalg.inv(refUC)
+            rot_trans_to_bcs_idx = {}
+            for i_tab, sym_tab in enumerate(table.symmetries):
+                key = (tuple(sym_tab.R.flatten().tolist()), tuple((sym_tab.t % 1.0).tolist()))
+                rot_trans_to_bcs_idx[key] = i_tab + 1
 
             for block_idx, block in enumerate(self._degenerate_sets):
                 block_mats = block_matrices[block_idx]
@@ -237,52 +223,35 @@ def at with _suppress_spglib_warnings():
                 if self._log_level > 1:
                     print(f"    Block {block_idx} (dim {block_size}): matching with table...")
 
-                # Match operations by rotation AND translation in BCS frame
-                # Transform each sg.symmetries op to BCS frame and match to table
-                refUC = sg.refUC
-                shiftUC = sg.shiftUC
-                refUCinv = np.linalg.inv(refUC)
-                rot_trans_to_bcs_idx = {}
-                for i_tab, sym_tab in enumerate(table.symmetries):
-                    key = (tuple(sym_tab.R.flatten().tolist()), tuple((sym_tab.t % 1.0).tolist()))
-                    rot_trans_to_bcs_idx[key] = i_tab + 1
-                
+                # Match blocks to BCS irreps using rotation+translation matching.
+                # Use GOT formula: n_i = (1/|G|) * sum_g chi_i*(g) * chi(g)
                 for irr in irreps_in_table:
-                    # Allow matching composites if same dim
                     if irr.dim > block_size:
                         continue
-                    
+
                     overlap = 0
                     valid_match = True
                     for idx, isym in enumerate(little_group_indices):
                         sym = sg.symmetries[isym]
-                        rot_prim = sym.rotation
-                        trans_prim = sym.translation
-                        
-                        # Transform to BCS frame
-                        rot_bcs = np.round(refUCinv @ rot_prim @ refUC).astype(int)
-                        trans_bcs = np.round(refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC), 10) % 1.0
-                        
+                        rot_bcs = np.round(refUCinv @ sym.rotation @ refUC).astype(int)
+                        trans_bcs = np.round(refUCinv @ (sym.translation + sym.rotation @ shiftUC - shiftUC), 10) % 1.0
                         key = (tuple(rot_bcs.flatten().tolist()), tuple(trans_bcs.tolist()))
                         bcs_idx = rot_trans_to_bcs_idx.get(key, -1)
                         if bcs_idx == -1:
                             valid_match = False
                             break
-                        val = chars_calc[idx]
-                        table_char = irr.characters.get(bcs_idx, 0)
-                        overlap += np.conj(table_char) * val
-                    
+                        overlap += np.conj(irr.characters.get(bcs_idx, 0)) * chars_calc[idx]
+
                     if not valid_match:
                         continue
-                        
+
                     n = overlap / num_little
-                    # n should be an integer (how many times this irrep is in the block)
                     count = int(round(np.real(n)))
                     if count > 0 and np.abs(n - count) < 0.2:
                         for _ in range(count):
                             matched_labels.append(irr.name)
                             total_irrep_dim += irr.dim
-                    
+
                     if self._log_level > 1 and irr.kpname == kpname:
                         print(f"      - {irr.name}: match_val={np.abs(n):.4f} (overlap={overlap:.3f}, g={num_little})")
 
@@ -742,14 +711,12 @@ def at with _suppress_spglib_warnings():
             rot_prim = sym.rotation
             trans_prim = sym.translation
             
-            # Transform operation to BCS frame for table matching
-            if use_bcs_frame:
-                rot_bcs = np.round(refUCinv @ rot_prim @ refUC).astype(int)
-                trans_bcs = refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC)
-                trans_bcs = np.round(trans_bcs, 10) % 1.0
-            else:
-                rot_bcs = rot_prim
-                trans_bcs = np.round(trans_prim, 10) % 1.0
+            # Transform operation to BCS frame for table matching.
+            # Always use BCS frame regardless of whether this is Gamma or not,
+            # because IrrepTable.symmetries are always in the BCS conventional cell.
+            rot_bcs = np.round(refUCinv @ rot_prim @ refUC).astype(int)
+            trans_bcs = refUCinv @ (trans_prim + rot_prim @ shiftUC - shiftUC)
+            trans_bcs = np.round(trans_bcs, 10) % 1.0
             
             # Find matching index in table (use BCS frame operations)
             it_tab = -1
