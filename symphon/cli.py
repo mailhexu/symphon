@@ -438,6 +438,8 @@ def compute_ground_truth_daughters(phonon, qpoint, symprec=1e-5):
         return None
 
     try:
+        import warnings
+
         qpoint_arr = np.array(qpoint)
 
         # Determine supercell matrix from q-point
@@ -451,13 +453,24 @@ def compute_ground_truth_daughters(phonon, qpoint, symprec=1e-5):
                     break
         supercell_matrix = np.diag(denoms)
 
-        md = Modulation.with_supercell_and_symmetry_search(
-            dynamical_matrix=phonon.dynamical_matrix,
-            supercell_matrix=supercell_matrix,
-            qpoint=qpoint_arr,
-            factor=phonon.unit_conversion_factor,
-            symprec=symprec,
-        )
+        with warnings.catch_warnings():
+            # spgrep_modulation 0.3.0 emits a spurious "Inconsistent eigenvalue"
+            # UserWarning when eigenvalues from irrep-projected blocks differ from
+            # full dynamical matrix eigenvalues by small numerical noise.  The
+            # warning is benign — the downstream computation still succeeds.
+            warnings.filterwarnings(
+                "ignore",
+                message="Inconsistent eigenvalue",
+                category=UserWarning,
+                module="spgrep_modulation",
+            )
+            md = Modulation.with_supercell_and_symmetry_search(
+                dynamical_matrix=phonon.dynamical_matrix,
+                supercell_matrix=supercell_matrix,
+                qpoint=qpoint_arr,
+                factor=phonon.unit_conversion_factor,
+                symprec=symprec,
+            )
 
         # Build flat list: one (freq, daughter_sg) per OPD direction
         flat = []
