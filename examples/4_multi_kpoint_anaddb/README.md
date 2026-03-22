@@ -23,12 +23,10 @@ This will analyze three high-symmetry points:
    - Includes IR and Raman activity columns
    
 2. **X point** (index 20, q = [0, 0.5, 0])
-   - Uses `irrep` backend
    - Shows BCS-style labels (X5-, X5+, X2+, etc.)
    - No IR/Raman activity (defined only for Γ point)
    
 3. **M point** (index 40, q = [0.5, 0.5, 0])
-   - Uses `irrep` backend
    - Shows BCS-style labels (M2+, M5-, M1+, etc.)
    - No IR/Raman activity (defined only for Γ point)
 
@@ -55,9 +53,9 @@ To analyze different q-points:
 
 ```python
 points_to_analyze = [
-    {'name': 'Gamma', 'index': 0,   'qcoords': [0.0, 0.0, 0.0], 'backend': 'phonopy'},
-    {'name': 'X',     'index': 20,  'qcoords': [0.0, 0.5, 0.0], 'backend': 'irrep',  'kpname': 'X'},
-    {'name': 'M',     'index': 40,  'qcoords': [0.5, 0.5, 0.0], 'backend': 'irrep',  'kpname': 'M'},
+    {'name': 'Gamma', 'index': 0,   'kpname': None},
+    {'name': 'X',     'index': 20,  'kpname': 'X'},
+    {'name': 'M',     'index': 40,  'kpname': 'M'},
 ]
 ```
 
@@ -70,6 +68,4 @@ phbst_fname = 'path/to/your_PHBST.nc'
 ## Notes
 
 - The LAO_PHBST.nc file contains 172 q-points along a path from Gamma to X to M
-- Gamma point analysis uses phonopy backend (optimal for Γ-point)
-- Non-Gamma point analysis uses irrep backend (required for k-points other than Γ)
-- The irrep backend requires installation: `pip install "symphon[irrep]"`
+- Non-Gamma point analysis requires the `irrep` package: `pip install "symphon[irrep]"`

@@ -84,22 +84,16 @@ pip install "symphon[irrep,abipy]"
 
 ## What's New
 
-The `phonopy-irreps` CLI has been redesigned for maximum simplicity:
+The `phonopy-irreps` CLI automatically discovers and analyzes all high-symmetry
+points with optimal settings — no need to specify q-points, backends, or label
+options manually:
 
-**Before (old):**
-```bash
-# Need to specify every detail
-phonopy-irreps --params file.yaml --qpoint 0 0 0 --both-labels
-phonopy-irreps --params file.yaml --qpoint 0.5 0.5 0 --backend irrep --kpname M
-```
-
-**Now (new):**
 ```bash
 # Just run it!
 phonopy-irreps --params file.yaml
 ```
 
-✨ Automatically discovers and analyzes **all** high-symmetry points with optimal settings!
+✨ Automatically discovers and analyzes **all** high-symmetry points!
 
 ## See Also
 

@@ -47,6 +47,6 @@ The tool prints a concise table with:
 
 ## Notes
 
-- PHBST files require explicit q-point index (use `--q-index`)
-- For non-Gamma points, add `--backend irrep --kpname X` (where X is the k-point name)
+- PHBST files require an explicit q-point index (use `--q-index`); omit it to auto-scan all high-symmetry points
+- For non-Gamma points, add `--kpname X` (where X is the BCS k-point label, e.g. X, M, R)
 - The MoS2 1T example analyzes the Gamma point (index 0)

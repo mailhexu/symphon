@@ -20,7 +20,7 @@ import sys
 
 import numpy as np
 from symphon import print_irreps
-from symphon.abipy_io import read_phbst_freqs_and_eigvecs
+from symphon.io.phbst import read_phbst_freqs_and_eigvecs
 
 # Input PHBST file
 phbst_fname = './LAO_PHBST.nc'
