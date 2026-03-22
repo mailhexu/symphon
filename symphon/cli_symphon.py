@@ -41,12 +41,12 @@ def main() -> None:
 
     # Rewrite sys.argv so sub-CLIs see their own prog name and arguments.
     if subcommand == "anaddb-irreps":
-        from symphon.cli import main as _main
+        from symphon.cli.main import main as _main
         sys.argv = ["symphon anaddb-irreps"] + sys.argv[2:]
         _main()
 
     elif subcommand == "phonopy-irreps":
-        from symphon.cli import main_phonopy as _main
+        from symphon.cli.main import main_phonopy as _main
         sys.argv = ["symphon phonopy-irreps"] + sys.argv[2:]
         _main()
 

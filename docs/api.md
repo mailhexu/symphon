@@ -1,14 +1,14 @@
 # `symphon` API Reference
 
-This document provides a detailed overview of the Python API available in the `symphon` package. The package is divided into three main modules:
+This document provides a detailed overview of the Python API available in the `symphon` package. The package is divided into three main subpackages:
 
-1. **Phonon Irreducible Representations** (`irreps_anaddb`): Analyzing phonon modes and assigning irrep labels using outputs from ABINIT/anaddb or directly via Phonopy.
-2. **Chiral Phase Transitions** (`chiral_transitions`): Group-theoretical analysis of displacive phase transitions to determine accessible chiral (Sohncke) space groups.
-3. **Magnetic Phase Transitions** (`magnetic_transitions`): Finding symmetry-adapted magnetic transitions.
+1. **Phonon Irreducible Representations** (`symphon/irreps/`): Analyzing phonon modes and assigning irrep labels using outputs from ABINIT/anaddb or directly via Phonopy.
+2. **Chiral Phase Transitions** (`symphon/chiral/`): Group-theoretical analysis of displacive phase transitions to determine accessible chiral (Sohncke) space groups.
+3. **Magnetic Phase Transitions** (`symphon/magnetic/`): Finding symmetry-adapted magnetic transitions.
 
 ---
 
-## 1. Phonon Irreducible Representations (`irreps_anaddb.py`)
+## 1. Phonon Irreducible Representations (`symphon/irreps/`)
 
 This module provides tools to read phonon frequencies and eigenvectors, compute the symmetry-adapted irreducible representations (irreps), and determine their IR/Raman activity.
 
@@ -106,7 +106,7 @@ Quickly prints the calculated irreps directly to the standard output using a Pho
 Here is a quick example of how to use the single-qpoint and multi-qpoint querying functionalities with the `IrRepsPhonopy` interface:
 
 ```python
-from symphon.irreps_anaddb import IrRepsPhonopy, get_all_irreps_phonopy
+from symphon.irreps import IrRepsPhonopy, get_all_irreps_phonopy
 
 # 1. Single Q-Point Analysis (Gamma point)
 qpoint_gamma = [0.0, 0.0, 0.0]
@@ -143,7 +143,7 @@ for q_label, irr in all_irreps.items():
 
 ---
 
-## 2. Chiral Phase Transitions (`chiral_transitions.py`)
+## 2. Chiral Phase Transitions (`symphon/chiral/`)
 
 This module allows for the discovery of accessible chiral daughter phases by evaluating the isotropy subgroups of structural distortions.
 
@@ -203,7 +203,7 @@ Categorizes broken symmetries: `INVERSION`, `MIRROR`, `GLIDE`, `ROTOUNVERSION`.
 
 ---
 
-## 3. Magnetic Phase Transitions (`magnetic_transitions.py`)
+## 3. Magnetic Phase Transitions (`symphon/magnetic/`)
 
 Provides capabilities to identify symmetry-breaking magnetic configurations.
 
@@ -227,7 +227,7 @@ MagneticTransitionFinder(
 - `check_chirality(dataset) -> bool`: Analyzes a magnetic symmetry dataset to evaluate chiral features.
 - `find_transitions(qpoint: list[float]) -> list[dict]`: Discovers accessible magnetic space groups by applying symmetry-adapted distortions.
 
-### `class AbstractMagneticTransitionFinder` (`abstract_magnetic.py`)
+### `class AbstractMagneticTransitionFinder` (`symphon/magnetic/abstract.py`)
 
 A pure group-theoretical implementation to find possible magnetic space group phase transitions without providing any input crystal structure. It evaluates generic time-odd (magnetic) order parameters transforming according to the abstract space group irreducible representations.
 

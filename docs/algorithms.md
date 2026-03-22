@@ -7,7 +7,7 @@ implemented in the `symphon` package.
 
 ## 1. Mulliken Irrep Labels (Gamma-point)
 
-Entry point: `IrRepsEigen.run()` in `irreps_anaddb.py`.
+Entry point: `IrRepsEigen.run()` in `symphon/irreps/core.py`.
 Mulliken labels are only produced when `phonopy`'s built-in character table
 covers the point group of the little co-group at **q**.
 
@@ -130,7 +130,7 @@ matrices in `mapping_table` give identical results to Cartesian matrices.
 ## 3. BCS Labels (irrep backend)
 
 Entry point: `IrRepsEigen.run()` always launches `IrRepsIrrep` after the phonopy
-step.  The full implementation is in `irrep_backend.py`.
+step.  The full implementation is in `symphon/irreps/backend.py`.
 
 ```mermaid
 flowchart TD
@@ -290,5 +290,5 @@ flowchart TD
 
 ---
 
-*Generated from source: `symphon/irreps_anaddb.py`, `symphon/irrep_backend.py`,
-`symphon/chiral_transitions.py`.*
+*Generated from source: `symphon/irreps/core.py`, `symphon/irreps/backend.py`,
+`symphon/chiral/transitions.py`.*

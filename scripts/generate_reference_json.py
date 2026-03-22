@@ -2,7 +2,7 @@
 import json
 import numpy as np
 from pathlib import Path
-from symphon.chiral_transitions import ChiralTransitionFinder, get_sohncke_numbers
+from symphon.chiral import ChiralTransitionFinder, get_sohncke_numbers
 
 def serialize_transition(t):
     # Convert OPD numerical values to real if they are nearly real

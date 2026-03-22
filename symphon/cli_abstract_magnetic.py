@@ -9,7 +9,7 @@ Usage:
 import argparse
 import sys
 import numpy as np
-from symphon.abstract_magnetic import AbstractMagneticTransitionFinder
+from symphon.magnetic import AbstractMagneticTransitionFinder
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Find abstract chiral magnetic transitions")

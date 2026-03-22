@@ -29,13 +29,15 @@ import argparse
 import sys
 from typing import Optional
 
-from symphon.chiral_transitions import (
+from symphon.chiral import (
     ChiralTransitionFinder,
     format_transition_table,
     is_sohncke,
     get_sohncke_numbers,
     get_sohncke_class,
     SohnckeClass,
+)
+from symphon.chiral.transitions import (
     _save_transitions_cache,
     _load_transitions_cache,
 )

@@ -7,7 +7,7 @@ Run:
     uv run python generate_transition_tables.py
 """
 
-from symphon.chiral_transitions import (
+from symphon.chiral import (
     ChiralTransitionFinder,
     SohnckeClass,
     is_sohncke,
@@ -22,7 +22,7 @@ OUTPUT_DIR = Path(__file__).parent / "chiral_transitions"
 def get_spg_symbol(number: int) -> str:
     """Get space group symbol for a number."""
     # Use ChiralTransitionFinder to get the symbol (it handles Hall number mapping correctly)
-    from symphon.chiral_transitions import ChiralTransitionFinder
+    from symphon.chiral import ChiralTransitionFinder
     try:
         finder = ChiralTransitionFinder(number)
         symbol = finder.spacegroup_info.symbol

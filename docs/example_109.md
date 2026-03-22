@@ -2,7 +2,7 @@
 
 Here is a detailed, step-by-step breakdown of how the `symphon` code analyzes Space Group 109 ($I4_1md$) to find a Class II chiral phase transition, identifying the Order Parameter Direction (OPD) and computing the daughter space group.
 
-This trace specifically follows the execution inside `symphon/chiral_transitions.py` for the transition occurring at the **X q-point** with the **2X1 irreducible representation (irrep)**.
+This trace specifically follows the execution inside `symphon/chiral/transitions.py` for the transition occurring at the **X q-point** with the **2X1 irreducible representation (irrep)**.
 
 ### Step 1: Initialization & Parent Group Analysis
 The code starts by initializing the `ChiralTransitionFinder(109)`.

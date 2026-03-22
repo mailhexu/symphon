@@ -28,7 +28,7 @@ This guide provides detailed usage instructions for `symphon` including both Pyt
 
 ### From anaddb PHBST (AbiPy)
 
-Run anaddb to get the PHBST file with phonon frequencies and eigenvectors. See example in `examples/MoS2_1T/anaddb_input/`.
+Run anaddb to get the PHBST file with phonon frequencies and eigenvectors. See example in `examples/1_basic_anaddb/MoS2_1T/anaddb_input/`.
 
 #### Basic Usage
 
@@ -49,13 +49,12 @@ print_irreps(
     ind_q=0,
     symprec=1e-8,              # Symmetry precision (default: 1e-5)
     degeneracy_tolerance=1e-4, # Frequency tolerance (default: 1e-4)
-    is_little_cogroup=False,   # Use little co-group setting (default: False)
     log_level=0,               # Verbosity: 0=quiet, 1+=verbose (default: 0)
     show_verbose=True,         # Show detailed phonopy output (default: False)
 )
 ```
 
-**Note**: The `backend` parameter is deprecated in the CLI but still available in the Python API for advanced use cases. The backend is automatically selected based on the q-point (phonopy for Gamma, irrep for others).
+**Note**: The backend is automatically selected based on the q-point (phonopy for Gamma, irrep for others).
 
 ### From phonopy params/YAML
 
@@ -80,13 +79,12 @@ print_irreps_phonopy(
     qpoint=[0.5, 0.5, 0.0],  # M point
     symprec=1e-5,
     degeneracy_tolerance=1e-4,
-    is_little_cogroup=False,
     log_level=0,
     show_verbose=False,
 )
 ```
 
-**Note**: The `backend` and `kpname` parameters are deprecated in the CLI but still available in the Python API. The backend is automatically selected, and k-point names are determined from the q-point coordinates.
+**Note**: The backend is automatically selected, and k-point names are determined from the q-point coordinates.
 
 ### Parameters
 
@@ -96,11 +94,8 @@ print_irreps_phonopy(
 - **ind_q** (int, required): Index of q-point in PHBST file (0-based)
 - **symprec** (float): Symmetry precision for structure analysis (default: 1e-5)
 - **degeneracy_tolerance** (float): Frequency tolerance for degeneracy detection (default: 1e-4)
-- **is_little_cogroup** (bool): Use little co-group setting (default: False)
 - **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - **show_verbose** (bool): Show detailed phonopy irreps output (default: False)
-- **backend** (str, optional): Backend driver: `"phonopy"` or `"irrep"`. If not specified, automatically selected based on q-point.
-- **kpname** (str, optional): K-point name for `irrep` backend (e.g., `"GM"`, `"X"`, `"M"`).
 
 #### For `print_irreps_phonopy` (phonopy route):
 
@@ -108,11 +103,8 @@ print_irreps_phonopy(
 - **qpoint** (sequence of 3 floats, required): q-point in fractional coordinates
 - **symprec** (float or None): Symmetry precision for structure analysis. If `None` (or omitted), symphon will try to use the symmetry tolerance recorded in the phonopy file (e.g., `phonopy.symmetry_tolerance` in the YAML), falling back to `1e-5` when not available.
 - **degeneracy_tolerance** (float): Frequency tolerance for degeneracy detection (default: 1e-4)
-- **is_little_cogroup** (bool): Use little co-group setting (default: False)
 - **log_level** (int): Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - **show_verbose** (bool): Show detailed phonopy irreps output (default: False)
-- **backend** (str, optional): Backend driver: `"phonopy"` or `"irrep"`. If not specified, automatically selected based on q-point.
-- **kpname** (str, optional): K-point name for `irrep` backend (e.g., `"GM"`, `"X"`, `"M"`).
 
 ---
 
@@ -136,11 +128,10 @@ Available subcommands:
 - `abstract-magnetic` - Abstract chiral magnetic transitions by space group
 - `msg` - Identify chirality of a Magnetic Space Group
 
-### Legacy Standalone Command
+### Legacy Standalone Commands
 
 - `anaddb-irreps` - Same as `symphon anaddb-irreps` (for backward compatibility)
-
-**Note**: There is no standalone `phonopy-irreps` command. Use `symphon phonopy-irreps` instead.
+- `phonopy-irreps` - Same as `symphon phonopy-irreps` (standalone entry point)
 
 ---
 
@@ -227,7 +218,6 @@ This adds two columns to the output:
 - `-q`, `--q-index` (optional): Index of q-point in PHBST file (0-based). If omitted, analyzes all high-symmetry q-points automatically.
 - `-s`, `--symprec`: Symmetry precision (default: 1e-5)
 - `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
-- `-l`, `--is-little-cogroup`: Use little co-group setting
 - `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - `--show-verbose`: Also print full verbose irreps output (phonopy-style)
 - `--verbose-file`: If set, write verbose output to this file instead of stdout
@@ -238,7 +228,6 @@ This adds two columns to the output:
 - `-p`, `--params` (required): Path to phonopy params/YAML file
 - `-s`, `--symprec`: Override symmetry precision. If omitted, uses the symmetry tolerance from the phonopy file, falling back to `1e-5`.
 - `-d`, `--degeneracy-tolerance`: Frequency tolerance for degeneracy (default: 1e-4)
-- `-l`, `--is-little-cogroup`: Use little co-group setting
 - `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - `--show-verbose`: Also print full verbose irreps output (phonopy-style)
 - `--verbose-file`: If set, write verbose output to this file instead of stdout
@@ -356,7 +345,7 @@ The CLI produces the same output format as the Python API, showing:
    - `IR`: IR activity (`Y` = active, `.` = inactive)
    - `Raman`: Raman activity (`Y` = active, `.` = inactive)
 
-**Note**: IR and Raman activity columns are shown for `phonopy` backend but omitted for `irrep` backend, as spectroscopic activity rules are typically defined only for the Γ point.
+**Note**: IR and Raman activity columns are shown at the Gamma point but omitted for non-Gamma points, as spectroscopic activity rules are only defined at Γ.
 
 ### Example Output
 

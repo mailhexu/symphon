@@ -4,7 +4,7 @@
 import argparse
 import sys
 import numpy as np
-from symphon.irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy
+from symphon.irreps import IrRepsAnaddb, IrRepsPhonopy
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate modulated supercells using high-symmetry basis")
