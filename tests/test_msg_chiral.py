@@ -1,6 +1,6 @@
 import pytest
-from symphon.msg_chiral import identify_msg_chirality
-from symphon.chiral_transitions import SohnckeClass
+from symphon.magnetic import identify_msg_chirality
+from symphon.chiral import SohnckeClass
 
 def test_identify_msg_chirality_type_1_class_3():
     # 18.16 is Type 1, Family 18 (Class III)

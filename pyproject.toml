@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "symphon"
-version = "0.2.2"
+version = "0.2.3"
 description = "symphon: use phonopy to find the irreducible representations of the phonon modes from anaddb output. It is a simple wrapper of the Phonopy irreps module."
 readme = "README.md"
 authors = [
@@ -15,7 +15,7 @@ requires-python = ">=3.10"
 dependencies = [
   "numpy>1.16.5",
   "ase>=3.19",
-  "phonopy>=2.43.0",
+  "phonopy>=2.43.0,<3.0.0",
   "netCDF4",
   "spglib>=2.0.0",
   "spgrep>=0.5.0",
@@ -42,7 +42,8 @@ dev = ["pytest>=7.0", "pytest-cov"]
 packages = ["symphon"]
 
 [project.scripts]
-anaddb-irreps = "symphon.cli:main"
+anaddb-irreps = "symphon.cli.main:main"
+phonopy-irreps = "symphon.cli.main:main_phonopy"
 symphon = "symphon.cli_symphon:main"
 symphon-modulate = "symphon.cli_modulate:main"
 

@@ -1,5 +1,5 @@
 import pytest
-from symphon.chiral_transitions import ChiralTransitionFinder, SohnckeClass
+from symphon.chiral import ChiralTransitionFinder, SohnckeClass
 
 # Specifically requested by the user to be verified before moving to full representation
 TARGET_SGS = [

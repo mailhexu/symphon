@@ -5,8 +5,12 @@ Provides a concise irreps summary by default and optional verbose output.
 
 import argparse
 import numpy as np
-from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, find_highsym_qpoints_in_phbst, print_irreps_phonopy
-
+from ..irreps import (
+    IrRepsAnaddb, 
+    IrRepsPhonopy, 
+    find_highsym_qpoints_in_phbst, 
+)
+from ..supercell_labels import compute_supercell_labels
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the symphon CLI."""
@@ -52,12 +56,6 @@ def parse_args() -> argparse.Namespace:
             "Frequency difference tolerance for degeneracy detection "
             "(default: 1e-4)"
         ),
-    )
-    parser.add_argument(
-        "-l",
-        "--is-little-cogroup",
-        action="store_true",
-        help="Use little co-group setting (passes True to IrRepsAnaddb)",
     )
     parser.add_argument(
         "-v",
@@ -225,12 +223,6 @@ def parse_args_phonopy() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "-l",
-        "--is-little-cogroup",
-        action="store_true",
-        help="Use little co-group setting (passes True to IrRepsPhonopy)",
-    )
-    parser.add_argument(
         "-v",
         "--log-level",
         type=int,
@@ -263,12 +255,12 @@ def parse_args_phonopy() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--compare-ground-truth",
+        "--compare-supercell-labels",
         action="store_true",
-        dest="compare_ground_truth",
+        dest="compare_supercell_labels",
         help=(
-            "Compare daughter space groups with ground truth from spgrep-modulation. "
-            "Shows both implementation and ground truth results side-by-side."
+            "Compare daughter space groups with supercell-based labels from spgrep-modulation. "
+            "Shows both implementation and supercell results side-by-side."
         ),
     )
 
@@ -285,7 +277,10 @@ def main_phonopy() -> None:
     try:
         from irreptables.irreps import IrrepTable
     except ImportError:
-        from irreptables import IrrepTable  # type: ignore
+        try:
+            from irreptables import IrrepTable  # type: ignore
+        except ImportError:
+            IrrepTable = None
     from phonopy import load as phonopy_load
     
     args = parse_args_phonopy()
@@ -296,7 +291,7 @@ def main_phonopy() -> None:
     positions = phonon.primitive.scaled_positions
     numbers = phonon.primitive.numbers
     
-    # Determine symmetry precision: user input > yaml file > default
+    # Determine symmetry precision
     if args.symprec is not None:
         symprec = args.symprec
     else:
@@ -320,26 +315,27 @@ def main_phonopy() -> None:
         verbosity=args.log_level
     )
     
-    # Get all high-symmetry k-points from irrep package
-    irrep_table = IrrepTable(sg.number_str, False, v=args.log_level)
+    if IrrepTable is not None:
+        # Get all high-symmetry k-points from irrep package
+        irrep_table = IrrepTable(sg.number_str, False, v=args.log_level)
+        
+        # Collect unique high-symmetry points
+        refUCinv = np.linalg.inv(sg.refUC.T)
+        high_sym_points = {}
+        seen_k_equiv = []
+        for irrep in irrep_table.irreps:
+            if hasattr(irrep, 'kpname') and irrep.kpname and hasattr(irrep, 'k'):
+                kpname = irrep.kpname
+                k_bcs = np.array(irrep.k.tolist())
+                k_prim = refUCinv @ k_bcs
+                k_equiv = tuple(np.round(k_prim - np.round(k_prim), 6))
+                if kpname not in high_sym_points and k_equiv not in seen_k_equiv:
+                    high_sym_points[kpname] = tuple(k_prim.tolist())
+                    seen_k_equiv.append(k_equiv)
+    else:
+        high_sym_points = {}
     
-    # Collect unique high-symmetry points
-    # Skip k-points that are equivalent (mod 1) to already-seen ones
-    # Transform BCS k-points to primitive coordinates using refUC
-    refUCinv = np.linalg.inv(sg.refUC.T)
-    high_sym_points = {}
-    seen_k_equiv = []
-    for irrep in irrep_table.irreps:
-        if hasattr(irrep, 'kpname') and irrep.kpname and hasattr(irrep, 'k'):
-            kpname = irrep.kpname
-            k_bcs = np.array(irrep.k.tolist())
-            k_prim = refUCinv @ k_bcs
-            k_equiv = tuple(np.round(k_prim - np.round(k_prim), 6))
-            if kpname not in high_sym_points and k_equiv not in seen_k_equiv:
-                high_sym_points[kpname] = tuple(k_prim.tolist())
-                seen_k_equiv.append(k_equiv)
-    
-    # Print header with space group info (once at the top)
+    # Print header with space group info
     print(f"Space group: {sg.name}")
     print(f"Found {len(high_sym_points)} high-symmetry points:")
     for kpname in sorted(high_sym_points.keys()):
@@ -351,27 +347,21 @@ def main_phonopy() -> None:
     for kpname in sorted(high_sym_points.keys()):
         k = high_sym_points[kpname]
         
-        # At Gamma, use both labels; otherwise just irrep backend
-        is_gamma = all(abs(x) < 1e-6 for x in k)
-        
         irr = IrRepsPhonopy(
             phonopy_params=args.phonopy_params,
             qpoint=k,
-            #is_little_cogroup=args.is_little_cogroup,
             symprec=symprec,
             degeneracy_tolerance=args.degeneracy_tolerance,
             log_level=args.log_level,
-            #backend="irrep",
-            #both_labels=is_gamma,  # Dual labels only at Gamma
         )
         irr._compute_chiral = args.chiral
         irr.run(kpname=kpname)
         
-        # Print k-point header with coordinate mapping
+        # Print k-point header
         print(f"# {kpname} point (Primitive coordinates)")
         print(f"# k_prim = [{k[0]:.4f}, {k[1]:.4f}, {k[2]:.4f}]")
         
-        # Get BCS coordinates and label if available
+        # Get BCS coordinates and label
         backend_obj = getattr(irr, '_irrep_backend_obj', None)
         if backend_obj and hasattr(backend_obj, '_qpoint_bcs') and hasattr(backend_obj, '_bcs_kpname'):
             q_bcs = backend_obj._qpoint_bcs
@@ -380,10 +370,10 @@ def main_phonopy() -> None:
         
         print("=" * 60)
         
-        # Compute ground truth if requested
-        ground_truth_data = None
-        if args.compare_ground_truth:
-            ground_truth_data = compute_ground_truth_daughters(
+        # Compute supercell-based labels
+        supercell_labels_data = None
+        if args.compare_supercell_labels:
+            supercell_labels_data = compute_supercell_labels(
                 phonon, k, symprec
             )
         
@@ -391,16 +381,15 @@ def main_phonopy() -> None:
             include_symmetry=False, 
             include_qpoint_cols=False, 
             show_chiral=args.chiral,
-            ground_truth=ground_truth_data
+            supercell_labels=supercell_labels_data
         ))
-        print()  # Add blank line between k-points
+        print()
         
         # Optional verbose output
         if args.show_verbose or args.verbose_file:
             verbose_text = irr.get_verbose_output()
             
             if args.verbose_file:
-                # Append to file for each k-point
                 mode = 'a' if kpname != sorted(high_sym_points.keys())[0] else 'w'
                 with open(args.verbose_file, mode, encoding="utf-8") as fh:
                     fh.write(f"\n# {kpname} point\n")
@@ -409,106 +398,3 @@ def main_phonopy() -> None:
                 print()
                 print(f"# Verbose output for {kpname}")
                 print(verbose_text, end="")
-
-
-def compute_ground_truth_daughters(phonon, qpoint, symprec=1e-5):
-    """
-    Compute ground truth daughter space groups using spgrep-modulation.
-
-    Returns a flat list of (freq, daughter_sg) — one entry per OPD direction
-    (i.e. one per band), sorted by frequency.  Degenerate eigenspaces of
-    dimension d contribute d consecutive entries at the same frequency, one
-    for each standard-basis OPD vector j=0…d-1.
-
-    Parameters
-    ----------
-    phonon : Phonopy
-    qpoint : tuple
-    symprec : float
-
-    Returns
-    -------
-    list of (float, str)  or  None on failure
-    """
-    try:
-        from spgrep_modulation.modulation import Modulation
-        import numpy as np
-        import spglib
-    except ImportError:
-        return None
-
-    try:
-        import warnings
-
-        qpoint_arr = np.array(qpoint)
-
-        # Determine supercell matrix from q-point
-        denoms = [1, 1, 1]
-        for i, x in enumerate(qpoint_arr):
-            if np.isclose(x, 0, atol=1e-5):
-                continue
-            for d in range(1, 13):
-                if np.isclose((x * d) % 1.0, 0, atol=1e-5):
-                    denoms[i] = d
-                    break
-        supercell_matrix = np.diag(denoms)
-
-        with warnings.catch_warnings():
-            # spgrep_modulation 0.3.0 emits a spurious "Inconsistent eigenvalue"
-            # UserWarning when eigenvalues from irrep-projected blocks differ from
-            # full dynamical matrix eigenvalues by small numerical noise.  The
-            # warning is benign — the downstream computation still succeeds.
-            warnings.filterwarnings(
-                "ignore",
-                message="Inconsistent eigenvalue",
-                category=UserWarning,
-                module="spgrep_modulation",
-            )
-            md = Modulation.with_supercell_and_symmetry_search(
-                dynamical_matrix=phonon.dynamical_matrix,
-                supercell_matrix=supercell_matrix,
-                qpoint=qpoint_arr,
-                factor=phonon.unit_conversion_factor,
-                symprec=symprec,
-            )
-
-        # Build flat list: one (freq, daughter_sg) per OPD direction
-        flat = []
-        for i, (eigval, eigvecs, irrep) in enumerate(md.eigenspaces):
-            freq = md.eigvals_to_frequencies(eigval)
-            dim = eigvecs.shape[0]
-
-            for j in range(dim):
-                opd = np.zeros(dim, dtype=complex)
-                opd[j] = 1.0
-                amplitudes = list(np.abs(opd) * 0.1)
-                arguments = list(np.angle(opd))
-
-                daughter = "-"
-                try:
-                    cell, mod = md.get_modulated_supercell_and_modulation(
-                        frequency_index=i,
-                        amplitudes=amplitudes,
-                        arguments=arguments,
-                        return_cell=True,
-                    )
-                    dataset = spglib.get_symmetry_dataset(
-                        (cell.cell, cell.scaled_positions, cell.numbers),
-                        symprec=symprec,
-                    )
-                    if dataset is not None:
-                        daughter = f"{dataset.international}(#{dataset.number})"
-                except Exception:
-                    pass
-
-                flat.append((float(freq), daughter))
-
-        # Sort by frequency so alignment by position is robust
-        flat.sort(key=lambda x: x[0])
-        return flat
-    except Exception:
-        return None
-
-
-if __name__ == "__main__":  # pragma: no cover
-    main()

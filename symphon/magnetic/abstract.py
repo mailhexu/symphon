@@ -3,7 +3,11 @@ from typing import List, Dict, Any
 import spglib
 from spgrep import get_spacegroup_irreps_from_primitive_symmetry
 from spgrep_modulation.isotropy import IsotropyEnumerator
-from symphon.chiral_transitions import ChiralTransitionFinder
+from symphon.chiral import ChiralTransitionFinder
+from symphon.symmetry_identification import (
+    get_supercell_matrix_from_qpoint,
+    get_lattice_translations_for_supercell,
+)
 
 class AbstractMagneticTransitionFinder:
     """
@@ -35,28 +39,15 @@ class AbstractMagneticTransitionFinder:
         trans_lg = info.primitive_translations[mapping]
         
         import math
-        denoms = [1, 1, 1]
         k_conv = np.dot(P_inv, qpoint_prim)
-        for i, x in enumerate(k_conv):
-            if np.isclose(x, 0, atol=self.symprec):
-                continue
-            for d in range(1, 13):
-                if np.isclose((x * d) % 1.0, 0, atol=self.symprec):
-                    denoms[i] = abs(denoms[i] * d) // math.gcd(denoms[i], d)
-                    break
-                    
-        S_prim = np.diag(denoms)
+        S_prim = get_supercell_matrix_from_qpoint(k_conv)
+        # For multi-k: update denoms by LCM across all k-points in the star
+        denoms = list(np.diag(S_prim).astype(int))
         S_prim_inv = np.linalg.inv(S_prim)
         lattice = np.dot(S_prim, info.primitive_lattice)
         
-        from itertools import product
         M = max(denoms) + 2
-        lattice_trans_n = []
-        for nx, ny, nz in product(range(-M, M+1), repeat=3):
-            n_prim = np.array([nx, ny, nz])
-            n_sc = np.dot(S_prim_inv, n_prim)
-            if np.all(n_sc > -1e-5) and np.all(n_sc < 1 - 1e-5):
-                lattice_trans_n.append(n_prim)
+        lattice_trans_n = get_lattice_translations_for_supercell(S_prim_inv, M)
 
         results = []
         

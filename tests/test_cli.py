@@ -99,10 +99,12 @@ def test_phonopy_irreps_output(yaml_file: str, request):
 def test_phonopy_irreps_help():
     """Test that help command works."""
     result = subprocess.run(
-        [sys.executable, "-m", "symphon.cli", "--help"],
+        [sys.executable, "-c",
+         "from symphon.cli.main import main; import sys; "
+         "sys.argv=['anaddb-irreps', '--help']; main()"],
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
     )
     assert result.returncode == 0
-    assert "phonopy-irreps" in result.stdout or "usage:" in result.stdout.lower()
+    assert "anaddb-irreps" in result.stdout or "usage:" in result.stdout.lower()

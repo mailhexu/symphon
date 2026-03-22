@@ -1,33 +1,15 @@
 """
-Chiral phase transitions via phonon irreducible representations.
+Phonon-induced chiral phase transitions.
 
-This module identifies all possible transitions from a non-chiral (achiral)
-parent space group to a chiral Sohncke space group, using pure group-theoretical
-analysis without requiring atomic structures.
-
-Key concepts:
-- 65 Sohncke groups: only space groups that can host chiral structures
-- Isotropy subgroup: subgroup of parent that leaves an order parameter invariant
-- Order parameter direction (OPD): specific direction in irrep space
-
-The method identifies all possible chiral daughter phases by enumerating 
-maximal isotropy subgroups for all irreps at special q-points.
-
-Theory documentation: See docs/chiral_transitions_theory.md
+This module contains the logic for finding phase transitions from a parent
+space group to a chiral Sohncke daughter space group.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
-from enum import Enum
+from typing import Optional, Any
 from pathlib import Path
 import json
 import numpy as np
-
-from typing import Any
-
-# =============================================================================
-# Dependencies
-# =============================================================================
 
 import spglib
 from irrep.spacegroup_irreps import SpaceGroupIrreps
@@ -44,429 +26,41 @@ except ImportError:
 
 from spgrep_modulation.isotropy import IsotropyEnumerator
 
+from .sohncke import (
+    ImproperOperationType, 
+    SohnckeClass, 
+    is_sohncke, 
+    get_sohncke_class, 
+    get_enantiomorph_partner, 
+    get_screw_notation,
+    _CACHE_DIR,
+    _get_cache_path,
+    _save_transitions_cache,
+    _load_transitions_cache
+)
+from .ops import (
+    classify_improper_operation, 
+    has_improper_operations, 
+    get_operation_description, 
+    rotation_to_jones
+)
+
+from symphon.symmetry_identification import get_lattice_translations_for_supercell
+
 # Flags are kept for compatibility if needed, but are now always True
 HAS_SPGLIB = True
 HAS_IRREP = True
 HAS_SPGREP = True
-
-
-# =============================================================================
-# Enums
-# =============================================================================
-
-class ImproperOperationType(Enum):
-    """Types of improper symmetry operations."""
-    INVERSION = "inversion"
-    MIRROR = "mirror"
-    GLIDE = "glide"
-    ROTOUNVERSION = "rotoinversion"
-
-
-class SohnckeClass(Enum):
-    """Classification of Sohncke space groups."""
-    CLASS_I = "achiral"
-    CLASS_II = "enantiomorphous"
-    CLASS_III = "chiral_supporting"
-
-
-# =============================================================================
-# Sohncke Space Groups - Algorithmically Derived from spglib
-# =============================================================================
-
-def _is_sohncke_from_operations(rotations: np.ndarray) -> bool:
-    """
-    Determine if space group is Sohncke from its rotation operations.
-
-    A Sohncke group contains ONLY proper operations (det=+1).
-    Any improper operation (det=-1) makes it non-Sohncke.
-
-    Args:
-        rotations: (order, 3, 3) array of rotation matrices
-
-    Returns:
-        True if all operations are proper (Sohncke group)
-    """
-    for rot in rotations:
-        det = np.linalg.det(rot)
-        if det < 0:
-            return False
-    return True
-
-
-def _get_sohncke_numbers_from_spglib() -> frozenset[int]:
-    """
-    Derive all 65 Sohncke space group numbers from spglib database.
-
-    This function iterates through all Hall symbols (1-530) and checks
-    each space group's operations for improper rotations.
-
-    Returns:
-        Frozen set of space group numbers that are Sohncke groups
-    """
-    if not HAS_SPGLIB:
-        raise ImportError(
-            "spglib is required. Install with: pip install spglib"
-        )
-
-    sohncke_numbers = set()
-
-    for hall_number in range(1, 531):
-        sg_type = spglib.get_spacegroup_type(hall_number)
-        if sg_type is None:
-            continue
-
-        sym = spglib.get_symmetry_from_database(hall_number)
-        if sym is None:
-            continue
-
-        if _is_sohncke_from_operations(sym['rotations']):
-            sohncke_numbers.add(sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0))
-
-    return frozenset(sohncke_numbers)
-
-
-# Pre-compute Sohncke numbers at module load
-_SOHNCKE_NUMBERS = _get_sohncke_numbers_from_spglib()
-
-_ENANTIOMORPHOUS_PAIRS: dict[int, int] = {
-    76: 78, 78: 76,
-    91: 95, 95: 91,
-    92: 96, 96: 92,
-    144: 145, 145: 144,
-    151: 153, 153: 151,
-    152: 154, 154: 152,
-    169: 170, 170: 169,
-    171: 172, 172: 171,
-    178: 179, 179: 178,
-    180: 181, 181: 180,
-    212: 213, 213: 212,
-}
-
-_SOHNCKE_PRETTY_SYMBOLS: dict[int, str] = {
-    1: "P 1", 3: "P 2", 4: "P 2_1", 5: "C 2",
-    16: "P 2 2 2", 17: "P 2 2 2_1", 18: "P 2_1 2_1 2", 19: "P 2_1 2_1 2_1",
-    20: "C 2 2 2_1", 21: "C 2 2 2", 22: "F 2 2 2", 23: "I 2 2 2", 24: "I 2_1 2_1 2_1",
-    75: "P 4", 76: "P 4_1", 77: "P 4_2", 78: "P 4_3", 79: "I 4", 80: "I 4_1",
-    89: "P 4 2 2", 90: "P 4 2_1 2", 91: "P 4_1 2 2", 92: "P 4_1 2_1 2",
-    93: "P 4_2 2 2", 94: "P 4_2 2_1 2", 95: "P 4_3 2 2", 96: "P 4_3 2_1 2",
-    97: "I 4 2 2", 98: "I 4_1 2 2",
-    143: "P 3", 144: "P 3_1", 145: "P 3_2", 146: "R 3",
-    149: "P 3 1 2", 150: "P 3 2 1", 151: "P 3_1 1 2", 152: "P 3_1 2 1",
-    153: "P 3_2 1 2", 154: "P 3_2 2 1", 155: "R 3 2",
-    168: "P 6", 169: "P 6_1", 170: "P 6_5", 171: "P 6_2", 172: "P 6_4", 173: "P 6_3",
-    177: "P 6 2 2", 178: "P 6_1 2 2", 179: "P 6_5 2 2", 180: "P 6_2 2 2", 181: "P 6_4 2 2", 182: "P 6_3 2 2",
-    195: "P 2 3", 196: "F 2 3", 197: "I 2 3", 198: "P 2_1 3", 199: "I 2_1 3",
-    207: "P 4 3 2", 208: "P 4_2 3 2", 209: "F 4 3 2", 210: "F 4_1 3 2", 211: "I 4 3 2",
-    212: "P 4_3 3 2", 213: "P 4_1 3 2", 214: "I 4_1 3 2"
-}
-
-_CACHE_DIR = Path(__file__).parent.parent / ".cache"
-
-
-def _get_cache_path(cache_name: str) -> Path:
-    """Get path to a cache file."""
-    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return _CACHE_DIR / f"{cache_name}.json"
-
-
-def _save_transitions_cache(transitions_data: list[dict]) -> None:
-    """Save transition summary to cache."""
-    cache_file = _get_cache_path("chiral_transitions_all")
-    with open(cache_file, "w") as f:
-        json.dump(transitions_data, f)
-
-
-def _load_transitions_cache() -> Optional[list[dict]]:
-    """Load transition summary from cache if it exists."""
-    cache_file = _get_cache_path("chiral_transitions_all")
-    if cache_file.exists():
-        with open(cache_file, "r") as f:
-            return json.load(f)
-    return None
-
-
-# =============================================================================
-# Helper Functions - Sohncke Classification
-# =============================================================================
-
-def is_sohncke(spg_number: int) -> bool:
-    """
-    Check if space group is one of the 65 Sohncke groups.
-
-    Args:
-        spg_number: International space group number (1-230)
-
-    Returns:
-        True if the space group is a Sohncke group
-    """
-    return spg_number in _SOHNCKE_NUMBERS
-
-
-def get_sohncke_numbers() -> list[int]:
-    """
-    Return all 65 Sohncke space group numbers.
-
-    Returns:
-        Sorted list of Sohncke space group numbers
-    """
-    return sorted(_SOHNCKE_NUMBERS)
-
-
-def get_sohncke_class(spg_number: int) -> SohnckeClass:
-    """
-    Classify a space group into Sohncke classes.
-
-    - CLASS_I: Non-Sohncke (contains improper operations)
-    - CLASS_II: Sohncke with enantiomorphous partner (11 pairs)
-    - CLASS_III: Sohncke without enantiomorphous partner (43 groups)
-
-    Args:
-        spg_number: International space group number (1-230)
-
-    Returns:
-        SohnckeClass enum value
-    """
-    if spg_number not in _SOHNCKE_NUMBERS:
-        return SohnckeClass.CLASS_I
-    if spg_number in _ENANTIOMORPHOUS_PAIRS:
-        return SohnckeClass.CLASS_II
-    return SohnckeClass.CLASS_III
-
-
-def get_enantiomorph_partner(spg_number: int) -> Optional[int]:
-    """
-    Get the enantiomorphous partner of a Class II Sohncke group.
-
-    Args:
-        spg_number: International space group number (1-230)
-
-    Returns:
-        Partner space group number, or None if not Class II
-    """
-    return _ENANTIOMORPHOUS_PAIRS.get(spg_number)
-
-
-def get_screw_notation(spg_number: int) -> str:
-    """
-    Get the screw axis notation for a Sohncke space group.
-    
-    Args:
-        spg_number: International space group number (1-230)
-        
-    Returns:
-        Screw notation string (e.g., "4_1", "6_3", "None")
-    """
-    # Common screw axes in Sohncke groups
-    screws = {
-        4: "2_1", 17: "2_1", 18: "2_1", 19: "2_1", 20: "2_1", 24: "2_1",
-        76: "4_1", 77: "4_2", 78: "4_3", 80: "4_1",
-        91: "4_1", 92: "4_1", 93: "4_2", 94: "4_2", 95: "4_3", 96: "4_3", 98: "4_1",
-        144: "3_1", 145: "3_2", 151: "3_1", 152: "3_1", 153: "3_2", 154: "3_2",
-        169: "6_1", 170: "6_5", 171: "6_2", 172: "6_4", 173: "6_3",
-        178: "6_1", 179: "6_5", 180: "6_2", 181: "6_4", 182: "6_3",
-        198: "2_1", 199: "2_1", 208: "4_2", 210: "4_1", 212: "4_3", 213: "4_1", 214: "4_1"
-    }
-    
-    res = screws.get(spg_number)
-    if res:
-        return res
-        
-    # Attempt to extract from spglib symbol
-    try:
-        if HAS_SPGLIB:
-            # Find a Hall number for this space group to get its standard symbol
-            target_hall = 0
-            for hall_number in range(1, 531):
-                sg_type = spglib.get_spacegroup_type(hall_number)
-                if sg_type and (sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)) == spg_number:
-                    target_hall = hall_number
-                    break
-            
-            if target_hall > 0:
-                sg_type = spglib.get_spacegroup_type(target_hall)
-                symbol = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
-                import re
-                # Match screw axes like 4_2, 3_1, etc. Must have an underscore.
-                match = re.search(r'([2346]_(\d))', symbol)
-                if match:
-                    return match.group(1).replace('_', '_') # Keep underscore for consistency
-    except Exception:
-        pass
-        
-    return "None"
-
-
-# =============================================================================
-# Helper Functions - Improper Operations
-# =============================================================================
-
-def classify_improper_operation(rotation: np.ndarray, translation: Optional[np.ndarray] = None) -> Optional[ImproperOperationType]:
-    """
-    Classify the type of improper operation from a rotation matrix.
-
-    Args:
-        rotation: (3, 3) integer rotation matrix
-        translation: (3,) translation vector (optional, needed to distinguish mirror/glide)
-
-    Returns:
-        ImproperOperationType or None if proper operation (det=+1)
-    """
-    det = int(round(np.linalg.det(rotation)))
-    if det > 0:
-        return None
-
-    trace = int(round(np.trace(rotation)))
-
-    if trace == -3:
-        return ImproperOperationType.INVERSION
-
-    if trace == 1:
-        if translation is not None and not np.allclose(translation % 1.0, 0, atol=1e-5):
-            return ImproperOperationType.GLIDE
-        return ImproperOperationType.MIRROR
-
-    return ImproperOperationType.ROTOUNVERSION
-
-
-def has_improper_operations(rotations: np.ndarray) -> bool:
-    """
-    Check if a set of rotations contains any improper operations.
-
-    Args:
-        rotations: (order, 3, 3) array of rotation matrices
-
-    Returns:
-        True if any operation has det < 0
-    """
-    return not _is_sohncke_from_operations(rotations)
-
-
-def get_operation_description(rotation: np.ndarray, translation: np.ndarray) -> str:
-    """
-    Generate human-readable description of a symmetry operation.
-
-    Args:
-        rotation: (3, 3) rotation matrix
-        translation: (3,) translation vector
-
-    Returns:
-        Description string
-    """
-    op_type = classify_improper_operation(rotation, translation)
-    trace = int(round(np.trace(rotation)))
-    det = int(round(np.linalg.det(rotation)))
-
-    if det == -1:
-        if op_type == ImproperOperationType.INVERSION:
-            if np.allclose(translation % 1.0, 0, atol=1e-5):
-                return "1-bar (Inversion)"
-            return "1-bar (Inversion with shift)"
-        elif op_type in (ImproperOperationType.MIRROR, ImproperOperationType.GLIDE):
-            if op_type == ImproperOperationType.MIRROR:
-                return "m (Mirror plane)"
-            
-            # Identify glide type
-            t = translation % 1.0
-            components = []
-            if not np.isclose(t[0], 0, atol=1e-5): components.append("a")
-            if not np.isclose(t[1], 0, atol=1e-5): components.append("b")
-            if not np.isclose(t[2], 0, atol=1e-5): components.append("c")
-            
-            if len(components) == 1:
-                return f"{components[0]} (Glide plane)"
-            elif len(components) >= 2:
-                # Check for n-glide (1/2, 1/2, 0) etc.
-                if all(np.isclose(t[i], 0.5, atol=1e-2) or np.isclose(t[i], 0, atol=1e-2) for i in range(3)):
-                    return "n (Glide plane)"
-                return "d (Glide plane)"
-            return "glide (Glide plane)"
-        else:
-            trace_to_label = {-1: "4-bar", 0: "3-bar", -2: "6-bar"}
-            label = trace_to_label.get(trace, f"{-trace}-bar")
-            return f"{label} (Rotoinversion)"
-    else:
-        # Proper rotations: trace = 1 + 2*cos(2pi/n)
-        trace_to_n = {3: 1, 2: 6, 1: 4, 0: 3, -1: 2}
-        n = trace_to_n.get(trace, 0)
-        
-        if n == 1:
-            return "1 (Identity)"
-        
-        # Check for screw axis
-        if np.allclose(translation % 1.0, 0, atol=1e-5):
-            return f"{n} (Rotation)"
-        
-        # Calculate k for n_k screw axis
-        # T_total = (sum_{i=0}^{n-1} R^i) * t
-        sum_R = np.eye(3, dtype=int)
-        R_i = rotation.copy()
-        for _ in range(n - 1):
-            sum_R = sum_R + R_i
-            R_i = np.dot(R_i, rotation)
-        
-        T_total = np.dot(sum_R, translation)
-        # Use the maximum component to find k (for axes along lattice vectors)
-        k = int(round(np.max(np.abs(T_total)))) % n
-        if k == 0: k = n // 2 # Fallback for some centering cases
-        
-        return f"{n}_{k} (Screw axis)"
-
-
-def rotation_to_jones(rotation: np.ndarray, translation: np.ndarray) -> str:
-    """
-    Convert rotation+translation to Jones symbol.
-
-    Args:
-        rotation: (3, 3) rotation matrix
-        translation: (3,) translation vector
-
-    Returns:
-        Jones symbol string, e.g., "x,y,z" or "-x,-y,z+1/2"
-    """
-    coords = ['x', 'y', 'z']
-    result = []
-
-    for i in range(3):
-        row = rotation[i, :]
-        terms = []
-        for j in range(3):
-            if row[j] != 0:
-                sign = '-' if row[j] < 0 else '+'
-                val = abs(row[j])
-                if val == 1:
-                    terms.append(f"{sign}{coords[j]}")
-                else:
-                    terms.append(f"{sign}{val:.3f}{coords[j]}")
-
-        s = "".join(terms)
-        if s.startswith("+"):
-            s = s[1:]
-        
-        # Handle translation
-        t = translation[i] % 1.0
-        if not np.isclose(t, 0, atol=1e-5):
-            # Try to find common fractions
-            found_fraction = False
-            for denom in [2, 3, 4, 6, 8, 12]:
-                num = int(round(t * denom))
-                if np.isclose(t * denom, num, atol=1e-5):
-                    if num == 1:
-                        s += f"+1/{denom}"
-                    else:
-                        from math import gcd
-                        common = gcd(num, denom)
-                        s += f"+{num//common}/{denom//common}"
-                    found_fraction = True
-                    break
-            if not found_fraction:
-                s += f"+{t:.3f}"
-        
-        if not s:
-            s = "0"
-        result.append(s.replace("+-", "-"))
-
-    return ", ".join(result)
-
+HAS_SPGREP_MODULATION = True # Used but not defined in original
+
+
+def _spglib_attr(sg_type: Any, field: str, default: Any = None) -> Any:
+    """Read a field from a spglib type object (dict or named-attribute object)."""
+    if sg_type is None:
+        return default
+    if isinstance(sg_type, dict):
+        return sg_type.get(field, default)
+    return getattr(sg_type, field, default)
 
 # =============================================================================
 # Data Classes
@@ -744,10 +338,10 @@ class ChiralTransitionFinder:
         target_hall = 0
         for hall_number in range(1, 531):
             sg_type = spglib.get_spacegroup_type(hall_number)
-            if sg_type is not None and sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0) == self.spg_number:
+            if sg_type is not None and _spglib_attr(sg_type, 'number', 0) == self.spg_number:
                 # Prefer hexagonal setting for trigonal systems to match our generic lattice
                 if 143 <= self.spg_number <= 167:
-                    if sg_type.get('choice', '') if isinstance(sg_type, dict) else getattr(sg_type, 'choice', '') == 'H':
+                    if _spglib_attr(sg_type, 'choice', '') == 'H':
                         target_hall = hall_number
                         break
                     elif target_hall == 0:
@@ -770,10 +364,10 @@ class ChiralTransitionFinder:
         # Initial info from database
         info = SpaceGroupInfo(
             number=self.spg_number,
-            symbol=sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', ''),
+            symbol=_spglib_attr(sg_type, 'international_short', ''),
             rotations=np.array(sym['rotations']),
             translations=np.array(sym['translations']),
-            point_group_symbol=sg_type.get('pointgroup_international', '') if isinstance(sg_type, dict) else getattr(sg_type, 'pointgroup_international', ''),
+            point_group_symbol=_spglib_attr(sg_type, 'pointgroup_international', ''),
             order=len(sym['rotations'])
         )
         
@@ -1316,7 +910,7 @@ class ChiralTransitionFinder:
             for idx in lg_indices:
                 res = op_mapping.get(idx)
                 if res is None:
-                                        continue
+                    continue
                 
                 irr_idx, c = res
                 if irr_idx not in irr.characters:
@@ -1574,14 +1168,37 @@ class ChiralTransitionFinder:
         star: Optional[list[np.ndarray]] = None
     ) -> tuple[int, str, float]:
         info = self.spacegroup_info
-        
         P, P_inv = self._get_transformation_matrices()
-        
         qpoint_prim = np.dot(P, qpoint)
-        
+
+        denoms, S_prim, S_prim_inv, lattice = self._build_supercell(P, qpoint_prim, star, info)
+
+        M = max(denoms) + 2
+        lattice_trans_n = get_lattice_translations_for_supercell(S_prim_inv, M)
+
+        if full_reps is not None and star is not None and opd is not None:
+            sc_rots, sc_trans = self._sc_ops_from_full_reps(
+                S_prim, S_prim_inv, lattice_trans_n, star, full_reps, opd
+            )
+        elif little_rots is not None and little_trans is not None:
+            sc_rots, sc_trans = self._sc_ops_from_little_group(
+                S_prim, S_prim_inv, lattice_trans_n, qpoint_prim,
+                little_rots, little_trans, small_rep, opd
+            )
+        elif subgroup_indices is not None and len(subgroup_indices) > 0:
+            return self._identify_sg_from_subgroup_indices(
+                S_prim, S_prim_inv, lattice_trans_n, lattice, qpoint_prim,
+                subgroup_indices, info
+            )
+        else:
+            return 0, "Unknown", 1.0
+
+        return self._identify_sg_from_sc_ops(sc_rots, sc_trans, lattice, S_prim, info)
+
+    def _build_supercell(self, P, qpoint_prim, star, info):
+        """Compute supercell diagonal matrix for the given q-point (or star)."""
         import math
         denoms = [1, 1, 1]
-        
         k_points = star if star is not None else [qpoint_prim]
         for k_pt in k_points:
             k_conv = np.dot(P.T, k_pt)
@@ -1592,159 +1209,116 @@ class ChiralTransitionFinder:
                     if np.isclose((x * d) % 1.0, 0, atol=1e-5):
                         denoms[i] = abs(denoms[i] * d) // math.gcd(denoms[i], d)
                         break
-        
         S_prim = np.diag(denoms)
         S_prim_inv = np.linalg.inv(S_prim)
-        
-        # We work ENTIRELY in the primitive basis here
         lattice = np.dot(S_prim, info.primitive_lattice)
-        
-        sc_rots = []
-        sc_trans = []
-        
-        from itertools import product
-        M = max(denoms) + 2
-        lattice_trans_n = []
-        for nx, ny, nz in product(range(-M, M+1), repeat=3):
-            n_prim = np.array([nx, ny, nz])
-            n_sc = np.dot(S_prim_inv, n_prim)
-            if np.all(n_sc > -1e-5) and np.all(n_sc < 1 - 1e-5):
-                lattice_trans_n.append(n_prim)
+        return denoms, S_prim, S_prim_inv, lattice
 
-        if full_reps is not None and star is not None and opd is not None:
-            dim_small_rep = full_reps[0].shape[0] // len(star)
-            for j in range(len(info.primitive_rotations)):
-                r = info.primitive_rotations[j]
-                t = info.primitive_translations[j]
-                mat_j = full_reps[j]
-                if mat_j is None:
-                    continue
-                    
+    def _sc_ops_from_full_reps(self, S_prim, S_prim_inv, lattice_trans_n, star, full_reps, opd):
+        """Build supercell ops using full multi-k representations."""
+        info = self.spacegroup_info
+        dim_small_rep = full_reps[0].shape[0] // len(star)
+        sc_rots, sc_trans = [], []
+        for j in range(len(info.primitive_rotations)):
+            r = info.primitive_rotations[j]
+            t = info.primitive_translations[j]
+            mat_j = full_reps[j]
+            if mat_j is None:
+                continue
+            for n in lattice_trans_n:
+                phase_mat = np.zeros_like(mat_j, dtype=complex)
+                for idx_star, k in enumerate(star):
+                    phase = np.exp(-2j * np.pi * np.dot(k, n))
+                    s = idx_star * dim_small_rep
+                    phase_mat[s:s + dim_small_rep, s:s + dim_small_rep] = np.eye(dim_small_rep) * phase
+                mat = np.dot(phase_mat, mat_j)
+                if np.linalg.norm(np.dot(mat, opd) - opd) < 1e-5:
+                    sc_rots.append(np.dot(S_prim_inv, np.dot(r, S_prim)))
+                    sc_trans.append(np.dot(S_prim_inv, t + n))
+        return sc_rots, sc_trans
+
+    def _sc_ops_from_little_group(self, S_prim, S_prim_inv, lattice_trans_n, qpoint_prim,
+                                   little_rots, little_trans, small_rep, opd):
+        """Build supercell ops from the little group (with or without an irrep)."""
+        sc_rots, sc_trans = [], []
+        if small_rep is not None and opd is not None:
+            for j in range(len(little_rots)):
+                r = little_rots[j]
+                t = little_trans[j]
+                mat_j = small_rep[j]
                 for n in lattice_trans_n:
-                    phase_mat = np.zeros_like(mat_j, dtype=complex)
-                    for idx_star, k in enumerate(star):
-                        phase = np.exp(-2j * np.pi * np.dot(k, n))
-                        start_idx_mat = idx_star * dim_small_rep
-                        end_idx_mat = start_idx_mat + dim_small_rep
-                        phase_mat[start_idx_mat:end_idx_mat, start_idx_mat:end_idx_mat] = np.eye(dim_small_rep) * phase
-                        
-                    mat = np.dot(phase_mat, mat_j)
-                    diff = np.linalg.norm(np.dot(mat, opd) - opd)
-                    if diff < 1e-5:
-                        r_prime = np.dot(S_prim_inv, np.dot(r, S_prim))
-                        t_prime = np.dot(S_prim_inv, t + n)
-                        sc_rots.append(r_prime)
-                        sc_trans.append(t_prime)
-                        
-        elif little_rots is not None and little_trans is not None:
-            if small_rep is not None and opd is not None:
-                for j in range(len(little_rots)):
-                    r = little_rots[j]
-                    t = little_trans[j]
-                    mat_j = small_rep[j]
-                    
-                    for n in lattice_trans_n:
-                        phase = np.exp(-2j * np.pi * np.dot(qpoint_prim, n))
-                        mat = mat_j * phase
-                        diff = np.linalg.norm(np.dot(mat, opd) - opd)
-                        if diff < 1e-5:
-                            r_prime = np.dot(S_prim_inv, np.dot(r, S_prim))
-                            t_prime = np.dot(S_prim_inv, t + n)
-                            sc_rots.append(r_prime)
-                            sc_trans.append(t_prime)
-            else:
-                for r, t in zip(little_rots, little_trans):
-                    for n in lattice_trans_n:
-                        r_prime = np.dot(S_prim_inv, np.dot(r, S_prim))
-                        t_prime = np.dot(S_prim_inv, t + n)
-                        sc_rots.append(r_prime)
-                        sc_trans.append(t_prime)
+                    phase = np.exp(-2j * np.pi * np.dot(qpoint_prim, n))
+                    if np.linalg.norm(np.dot(mat_j * phase, opd) - opd) < 1e-5:
+                        sc_rots.append(np.dot(S_prim_inv, np.dot(r, S_prim)))
+                        sc_trans.append(np.dot(S_prim_inv, t + n))
+        else:
+            for r, t in zip(little_rots, little_trans):
+                for n in lattice_trans_n:
+                    sc_rots.append(np.dot(S_prim_inv, np.dot(r, S_prim)))
+                    sc_trans.append(np.dot(S_prim_inv, t + n))
+        return sc_rots, sc_trans
 
-        elif subgroup_indices is not None and len(subgroup_indices) > 0:
-            target_rots = info.primitive_rotations[subgroup_indices]
-            target_trans = info.primitive_translations[subgroup_indices]
-            
-            if np.allclose(qpoint_prim, 0):
-                for r, t in zip(target_rots, target_trans):
-                    r_prime = np.dot(S_prim_inv, np.dot(r, S_prim))
-                    t_prime = np.dot(S_prim_inv, t)
-                    sc_rots.append(r_prime)
-                    sc_trans.append(t_prime)
-            else:
-                best_num = 0
-                best_sym = "Unknown"
-                best_vol_ratio = 1.0
-                
-                for n_shift in lattice_trans_n:
-                    temp_sc_rots = []
-                    temp_sc_trans = []
-                    for r, t in zip(target_rots, target_trans):
-                        r_prime = np.dot(S_prim_inv, np.dot(r, S_prim))
-                        t_prime = np.dot(S_prim_inv, t + n_shift)
-                        temp_sc_rots.append(r_prime)
-                        temp_sc_trans.append(t_prime)
-                    
-                    try:
-                        temp_sc_rots_arr = np.round(temp_sc_rots).astype('intc')
-                        temp_sc_trans_arr = np.array(temp_sc_trans, dtype='double')
-                        sg_type = spglib.get_spacegroup_type_from_symmetry(
-                            temp_sc_rots_arr, temp_sc_trans_arr, lattice=lattice, symprec=self.symprec
-                        )
-                        if sg_type is not None:
-                            num = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
-                            from symphon.chiral_transitions import is_sohncke
-                            if is_sohncke(num):
-                                if num > best_num:
-                                    best_num = num
-                                    best_sym = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
-                                    
-                                    x, y, z = 0.123, 0.456, 0.789
-                                    all_pos = []
-                                    for r_op, t_op in zip(temp_sc_rots_arr, temp_sc_trans_arr):
-                                        all_pos.append((np.dot(r_op, [x,y,z]) + t_op) % 1.0)
-                                    all_pos = np.array(all_pos)
-                                    numbers = np.ones(len(all_pos), dtype='intc')
-                                    cell = (lattice, all_pos, numbers)
-                                    prim_cell = spglib.find_primitive(cell, symprec=self.symprec)
-                                    if prim_cell:
-                                        vol_daughter = np.abs(np.linalg.det(prim_cell[0]))
-                                        vol_parent = np.abs(np.linalg.det(info.primitive_lattice))
-                                        best_vol_ratio = vol_daughter / vol_parent
-                    except Exception:
-                        pass
-                        
-                return best_num, best_sym, best_vol_ratio
+    def _identify_sg_from_subgroup_indices(self, S_prim, S_prim_inv, lattice_trans_n, lattice,
+                                            qpoint_prim, subgroup_indices, info):
+        """Identify daughter SG from subgroup indices, with zone-boundary best-shift search."""
+        target_rots = info.primitive_rotations[subgroup_indices]
+        target_trans = info.primitive_translations[subgroup_indices]
 
+        if np.allclose(qpoint_prim, 0):
+            sc_rots = [np.dot(S_prim_inv, np.dot(r, S_prim)) for r in target_rots]
+            sc_trans = [np.dot(S_prim_inv, t) for t in target_trans]
+            return self._identify_sg_from_sc_ops(sc_rots, sc_trans, lattice, S_prim, info)
+
+        # Zone-boundary: try all lattice shifts and pick the best Sohncke SG
+        best_num, best_sym, best_vol_ratio = 0, "Unknown", 1.0
+        for n_shift in lattice_trans_n:
+            sc_rots = [np.dot(S_prim_inv, np.dot(r, S_prim)) for r in target_rots]
+            sc_trans = [np.dot(S_prim_inv, t + n_shift) for t in target_trans]
+            try:
+                rots_arr = np.round(sc_rots).astype('intc')
+                trans_arr = np.array(sc_trans, dtype='double')
+                sg_type = spglib.get_spacegroup_type_from_symmetry(
+                    rots_arr, trans_arr, lattice=lattice, symprec=self.symprec
+                )
+                if sg_type is not None:
+                    num = _spglib_attr(sg_type, 'number', 0)
+                    if is_sohncke(num) and num > best_num:
+                        best_num = num
+                        best_sym = _spglib_attr(sg_type, 'international_short', '')
+                        x, y, z = 0.123, 0.456, 0.789
+                        all_pos = np.array([(np.dot(r_op, [x, y, z]) + t_op) % 1.0
+                                            for r_op, t_op in zip(rots_arr, trans_arr)])
+                        numbers = np.ones(len(all_pos), dtype='intc')
+                        prim_cell = spglib.find_primitive((lattice, all_pos, numbers), symprec=self.symprec)
+                        if prim_cell:
+                            best_vol_ratio = np.abs(np.linalg.det(prim_cell[0])) / np.abs(np.linalg.det(info.primitive_lattice))
+            except Exception:
+                pass
+        return best_num, best_sym, best_vol_ratio
+
+    def _identify_sg_from_sc_ops(self, sc_rots, sc_trans, lattice, S_prim, info):
+        """Run spglib on the collected supercell ops and return (num, sym, vol_ratio)."""
         if not sc_rots:
             return 0, "Unknown", 1.0
-
         sc_rots_arr = np.round(sc_rots).astype('intc')
         sc_trans_arr = np.array(sc_trans, dtype='double')
-        
         try:
             sg_type = spglib.get_spacegroup_type_from_symmetry(
                 sc_rots_arr, sc_trans_arr, lattice=lattice, symprec=self.symprec
             )
             if sg_type is not None:
-                num = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
-                symb = sg_type.get('international_short', '') if isinstance(sg_type, dict) else getattr(sg_type, 'international_short', '')
-                
+                num = _spglib_attr(sg_type, 'number', 0)
+                symb = _spglib_attr(sg_type, 'international_short', '')
                 x, y, z = 0.123, 0.456, 0.789
-                all_pos = []
-                for r_op, t_op in zip(sc_rots_arr, sc_trans_arr):
-                    all_pos.append((np.dot(r_op, [x,y,z]) + t_op) % 1.0)
-                all_pos = np.array(all_pos)
+                all_pos = np.array([(np.dot(r_op, [x, y, z]) + t_op) % 1.0
+                                    for r_op, t_op in zip(sc_rots_arr, sc_trans_arr)])
                 numbers = np.ones(len(all_pos), dtype='intc')
-                cell = (lattice, all_pos, numbers)
-                prim_cell = spglib.find_primitive(cell, symprec=self.symprec)
+                prim_cell = spglib.find_primitive((lattice, all_pos, numbers), symprec=self.symprec)
                 if prim_cell:
-                    vol_daughter = np.abs(np.linalg.det(prim_cell[0]))
-                    vol_parent = np.abs(np.linalg.det(info.primitive_lattice))
-                    return num, symb, vol_daughter / vol_parent
+                    return num, symb, np.abs(np.linalg.det(prim_cell[0])) / np.abs(np.linalg.det(info.primitive_lattice))
                 return num, symb, np.abs(np.linalg.det(S_prim))
         except Exception:
             pass
-
         return 0, "Unknown", 1.0
 
     def _analyze_lost_operations(
@@ -1789,7 +1363,7 @@ class ChiralTransitionFinder:
         symmetry breaking creates TWO enantiomeric domains (left-handed and
         right-handed). The number of enantiomeric domains is therefore:
         - 0 if no improper operations were lost (parent was already chiral)
-        - 2 if any improper operations were lost (achiral → chiral transition)
+        - 2 if any improper operations were lost (achiral -> chiral transition)
         
         Returns:
             0 or 2 (never 1, since enantiomeric pairs always come in twos)

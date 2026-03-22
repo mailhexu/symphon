@@ -1,14 +1,15 @@
 """
-Test daughter space groups against ground truth from spgrep-modulation.
+Test daughter space groups using supercell-based labels from spgrep-modulation.
 
-Ground truth method:
+Supercell label method:
 1. Build modulated supercells using Modulation.get_high_symmetry_modulated_supercells()
 2. Identify spacegroup using spglib on the modulated structure
 3. Verify spglib confirms the structure has claimed space group (self-consistency)
 
-This ground truth should match the output of IrRepsIrrep daughter SG identification.
+These supercell-derived labels should match the output of IrRepsIrrep daughter SG
+identification.
 
-Run with: pytest tests/test_daughter_ground_truth.py -v
+Run with: pytest tests/test_daughter_supercell_labels.py -v
 """
 
 import pytest
@@ -30,9 +31,9 @@ def is_valid_spacegroup(sg_num):
     return 1 <= sg_num <= 230
 
 
-def get_ground_truth_daughters(ph, qpoint, supercell_matrix):
+def get_supercell_daughters(ph, qpoint, supercell_matrix):
     """
-    Get ground truth daughter space groups using spgrep-modulation.
+    Get daughter space group labels using modulated supercells (spgrep-modulation).
     
     This method:
     1. Uses Modulation to get eigenspaces and irreps
@@ -106,11 +107,11 @@ def get_ground_truth_daughters(ph, qpoint, supercell_matrix):
     return results
 
 
-def validate_ground_truth_self_consistency(cell, expected_sg_num, symprec=1e-5):
+def validate_supercell_self_consistency(cell, expected_sg_num, symprec=1e-5):
     """
     Verify that a modulated structure has the claimed space group.
     
-    This validates the ground truth by:
+    This validates the supercell label by:
     1. Getting symmetry operations from the structure
     2. Re-identifying space group from those operations
     3. Confirming they match
@@ -155,11 +156,11 @@ def validate_ground_truth_self_consistency(cell, expected_sg_num, symprec=1e-5):
     return sg_type.number == expected_sg_num
 
 
-class TestGroundTruthSelfConsistency:
-    """Test that ground truth method is self-consistent."""
+class TestSupercellLabelSelfConsistency:
+    """Test that supercell label method is self-consistent."""
     
-    def test_z_point_ground_truth_consistency(self):
-        """Verify Z point ground truth daughters are self-consistent."""
+    def test_z_point_supercell_label_consistency(self):
+        """Verify Z point supercell daughters are self-consistent."""
         from spgrep_modulation.modulation import Modulation
         import spglib
         
@@ -187,11 +188,11 @@ class TestGroundTruthSelfConsistency:
                 )
                 
                 # Verify self-consistency
-                is_consistent = validate_ground_truth_self_consistency(
+                is_consistent = validate_supercell_self_consistency(
                     cell, dataset.number
                 )
                 assert is_consistent, (
-                    f"Eigenspace {i}: ground truth not self-consistent for "
+                    f"Eigenspace {i}: supercell label not self-consistent for "
                     f"{dataset.international} (#{dataset.number})"
                 )
 
@@ -200,39 +201,39 @@ class TestZPointDaughterSG:
     """Test daughter space groups at Z point."""
     
     @pytest.fixture(scope="class")
-    def ground_truth_z(self):
-        """Get ground truth daughter SGs for Z point."""
+    def supercell_labels_z(self):
+        """Get supercell daughter SGs for Z point."""
         ph = get_phonopy_example()
         qpoint = [0, 0, 0.5]
         supercell_matrix = np.array([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
-        return get_ground_truth_daughters(ph, qpoint, supercell_matrix)
+        return get_supercell_daughters(ph, qpoint, supercell_matrix)
     
-    def test_z_point_has_eigenspaces(self, ground_truth_z):
+    def test_z_point_has_eigenspaces(self, supercell_labels_z):
         """Verify Z point has eigenspaces."""
-        assert len(ground_truth_z) > 0, "No eigenspaces found at Z point"
+        assert len(supercell_labels_z) > 0, "No eigenspaces found at Z point"
     
-    def test_z_point_daughters_are_valid_sgs(self, ground_truth_z):
+    def test_z_point_daughters_are_valid_sgs(self, supercell_labels_z):
         """Verify all daughter space groups are valid."""
-        for freq, dim, sg_set in ground_truth_z:
+        for freq, dim, sg_set in supercell_labels_z:
             for sg_num, sg_sym in sg_set:
                 assert is_valid_spacegroup(sg_num), (
                     f"Invalid space group {sg_sym} (#{sg_num}) at freq={freq:.4f} THz"
                 )
     
-    def test_z_point_has_chiral_daughters(self, ground_truth_z):
+    def test_z_point_has_chiral_daughters(self, supercell_labels_z):
         """
         Verify Z point has chiral daughters.
         
-        For SG 86 (P4_2/n) at Z point, the ground truth shows:
+        For SG 86 (P4_2/n) at Z point, the supercell labels show:
         - P4_1 (#76) and P4_3 (#78) - chiral Sohncke Class II (enantiomorphous pair)
         - P2 (#3) and P2_1 (#4) - chiral Sohncke Class III
         
         This confirms the implementation is correct for chiral phonon transitions.
         """
-        from symphon.chiral_transitions import is_sohncke
+        from symphon.chiral import is_sohncke
         
         has_chiral = False
-        for freq, dim, sg_set in ground_truth_z:
+        for freq, dim, sg_set in supercell_labels_z:
             for sg_num, sg_sym in sg_set:
                 if is_sohncke(sg_num):
                     has_chiral = True
@@ -245,7 +246,7 @@ class TestZPointDaughterSG:
             "This confirms SG 86 can have chiral phonon transitions."
         )
     
-    def test_z_point_expected_daughters(self, ground_truth_z):
+    def test_z_point_expected_daughters(self, supercell_labels_z):
         """
         Verify Z point daughters are from expected set.
         
@@ -254,7 +255,7 @@ class TestZPointDaughterSG:
         expected_sg_nums = {76, 78, 3, 4}
         
         all_found = set()
-        for freq, dim, sg_set in ground_truth_z:
+        for freq, dim, sg_set in supercell_labels_z:
             for sg_num, sg_sym in sg_set:
                 all_found.add(sg_num)
         
@@ -270,60 +271,61 @@ class TestAPointDaughterSG:
     """Test daughter space groups at A point."""
     
     @pytest.fixture(scope="class")
-    def ground_truth_a(self):
-        """Get ground truth daughter SGs for A point."""
+    def supercell_labels_a(self):
+        """Get supercell daughter SGs for A point."""
         ph = get_phonopy_example()
         qpoint = [0.5, 0.5, 0.5]
         supercell_matrix = np.array([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
-        return get_ground_truth_daughters(ph, qpoint, supercell_matrix)
+        return get_supercell_daughters(ph, qpoint, supercell_matrix)
     
-    def test_a_point_has_eigenspaces(self, ground_truth_a):
+    def test_a_point_has_eigenspaces(self, supercell_labels_a):
         """Verify A point has eigenspaces."""
-        assert len(ground_truth_a) > 0, "No eigenspaces found at A point"
+        assert len(supercell_labels_a) > 0, "No eigenspaces found at A point"
     
-    def test_a_point_daughters_are_valid_sgs(self, ground_truth_a):
+    def test_a_point_daughters_are_valid_sgs(self, supercell_labels_a):
         """Verify all daughter space groups are valid."""
-        for freq, dim, sg_set in ground_truth_a:
+        for freq, dim, sg_set in supercell_labels_a:
             for sg_num, sg_sym in sg_set:
                 assert is_valid_spacegroup(sg_num), (
                     f"Invalid space group {sg_sym} (#{sg_num}) at freq={freq:.4f} THz"
                 )
 
 
-class TestImplementationVsGroundTruth:
-    """Test that implementation matches ground truth."""
+class TestImplementationVsSupercellLabels:
+    """Test that implementation matches supercell-derived labels."""
     
     @pytest.fixture(scope="class")
-    def ground_truth_z(self):
-        """Get ground truth daughter SGs for Z point."""
+    def supercell_labels_z(self):
+        """Get supercell daughter SGs for Z point."""
         ph = get_phonopy_example()
         qpoint = [0, 0, 0.5]
         supercell_matrix = np.array([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
-        return get_ground_truth_daughters(ph, qpoint, supercell_matrix)
+        return get_supercell_daughters(ph, qpoint, supercell_matrix)
     
-    def test_implementation_daughters_match_ground_truth_z(self, ground_truth_z):
+    def test_implementation_daughters_match_supercell_labels_z(self, supercell_labels_z):
         """
-        Test that IrRepsIrrep implementation matches ground truth at Z point.
-        
+        Test that IrRepsIrrep implementation matches supercell labels at Z point.
+    
         This test will initially fail, revealing the bug in the current implementation.
         """
-        from symphon.irrep_backend import IrRepsIrrep
-        
+        from symphon.irreps.backend import IrRepsIrrep
+    
         ph = get_phonopy_example()
         qpoint = [0, 0, 0.5]
-        
+    
         # Get frequencies and eigenvectors
         freqs, eigvecs = ph.get_frequencies_with_eigenvectors(qpoint)
-        
+    
         # Run implementation
         irr = IrRepsIrrep(ph.primitive, qpoint, freqs, eigvecs, log_level=0)
         irr.run()
+
         
         # Access the results from _irreps attribute
         # _irreps is a list of dicts with keys: "label", "opd", "opd_num", "daughter_sg"
         irreps = irr._irreps
         
-        # Compare with ground truth
+        # Compare with supercell labels
         # Group implementation results by frequency
         impl_results = {}  # freq -> set of sg_nums
         band_idx = 0
@@ -341,22 +343,22 @@ class TestImplementationVsGroundTruth:
                     pass
             band_idx += 1
         
-        # Group ground truth by frequency
-        gt_results = {}  # freq -> set of sg_nums
-        for freq, dim, sg_set in ground_truth_z:
+        # Group supercell labels by frequency
+        sc_results = {}  # freq -> set of sg_nums
+        for freq, dim, sg_set in supercell_labels_z:
             f = round(freq, 4)
-            gt_results[f] = {sg_num for sg_num, sg_sym in sg_set}
+            sc_results[f] = {sg_num for sg_num, sg_sym in sg_set}
         
         # Compare for first few frequencies
-        freqs_to_check = sorted(gt_results.keys())[:5]
+        freqs_to_check = sorted(sc_results.keys())[:5]
         
         for f in freqs_to_check:
-            gt_sgs = gt_results.get(f, set())
+            sc_sgs = sc_results.get(f, set())
             impl_sgs = impl_results.get(f, set())
             
-            assert gt_sgs == impl_sgs, (
+            assert sc_sgs == impl_sgs, (
                 f"Frequency {f:.4f} THz: implementation gives {impl_sgs}, "
-                f"ground truth gives {gt_sgs}"
+                f"supercell labels give {sc_sgs}"
             )
 
 

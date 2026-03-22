@@ -1,5 +1,11 @@
 try:
-    from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, print_irreps, print_irreps_phonopy, find_highsym_qpoints_in_phbst
+    from .irreps import (
+        IrRepsAnaddb, 
+        IrRepsPhonopy, 
+        print_irreps, 
+        print_irreps_phonopy, 
+        find_highsym_qpoints_in_phbst
+    )
 except (ImportError, ModuleNotFoundError):
     # phonopy or spglib version conflict
     IrRepsAnaddb = None
@@ -8,7 +14,7 @@ except (ImportError, ModuleNotFoundError):
     print_irreps_phonopy = None
     find_highsym_qpoints_in_phbst = None
 
-from .chiral_transitions import (
+from .chiral import (
     is_sohncke,
     get_sohncke_numbers,
     get_sohncke_class,
@@ -21,15 +27,17 @@ from .chiral_transitions import (
     format_transition_table,
 )
 
-from .msg_chiral import (
+from .magnetic import (
     identify_msg_chirality,
     MSGChiralityInfo,
+    AbstractMagneticTransitionFinder,
 )
 
 __all__ = [
     "IrRepsAnaddb",
     "IrRepsPhonopy",
     "print_irreps",
+    "print_irreps_phonopy",
     "find_highsym_qpoints_in_phbst",
     "is_sohncke",
     "get_sohncke_numbers",
@@ -43,6 +51,5 @@ __all__ = [
     "format_transition_table",
     "identify_msg_chirality",
     "MSGChiralityInfo",
+    "AbstractMagneticTransitionFinder",
 ]
-
-

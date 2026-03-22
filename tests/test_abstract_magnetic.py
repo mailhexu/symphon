@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from symphon.abstract_magnetic import AbstractMagneticTransitionFinder
+from symphon.magnetic import AbstractMagneticTransitionFinder
 
 def test_abstract_magnetic_finder_creation():
     # Test creation for SG 2 (P-1, centrosymmetric)

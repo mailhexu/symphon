@@ -1,1 +1,1 @@
-symphon  phonopy-irreps -p ./phonopy_params.yaml.xz --compare-ground-truth
+symphon  phonopy-irreps -p ./phonopy_params.yaml.xz --compare-supercell-labels

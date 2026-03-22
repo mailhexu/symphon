@@ -68,7 +68,7 @@ def identify_spacegroup_from_operations(
     return 0, "Unknown"
 
 
-def _get_supercell_matrix_from_qpoint(qpoint: np.ndarray, max_denom: int = 12) -> np.ndarray:
+def get_supercell_matrix_from_qpoint(qpoint: np.ndarray, max_denom: int = 12) -> np.ndarray:
     """Get supercell matrix S such that S @ q is commensurate (integer)."""
     denoms = [1, 1, 1]
     for i, x in enumerate(qpoint):
@@ -79,6 +79,36 @@ def _get_supercell_matrix_from_qpoint(qpoint: np.ndarray, max_denom: int = 12) -
                 denoms[i] = d
                 break
     return np.diag(denoms)
+
+
+def get_lattice_translations_for_supercell(
+    S_prim_inv: np.ndarray,
+    M: int,
+) -> list[np.ndarray]:
+    """Return all primitive-cell lattice vectors that lie inside the supercell.
+
+    For a diagonal supercell matrix S_prim with max diagonal entry M, enumerate
+    all integer vectors n in the range [-M-2, M+2]^3 that satisfy
+    ``0 <= S_prim_inv @ n < 1`` (i.e. they are inside the supercell unit cell).
+
+    Parameters
+    ----------
+    S_prim_inv:
+        Inverse of the supercell matrix (3×3 float array).
+    M:
+        Search radius; typically ``max(diag(S_prim)) + 2``.
+
+    Returns
+    -------
+    list of 1-D integer arrays of shape (3,).
+    """
+    lattice_trans_n = []
+    for nx, ny, nz in product(range(-M, M + 1), repeat=3):
+        n_prim = np.array([nx, ny, nz])
+        n_sc = np.dot(S_prim_inv, n_prim)
+        if np.all(n_sc > -1e-5) and np.all(n_sc < 1 - 1e-5):
+            lattice_trans_n.append(n_prim)
+    return lattice_trans_n
 
 
 def get_isotropy_subgroup(
@@ -123,17 +153,12 @@ def get_isotropy_subgroup(
             return sg_num, sg_sym, preserved_indices
         return sg_num, sg_sym
     
-    S = _get_supercell_matrix_from_qpoint(qpoint)
+    S = get_supercell_matrix_from_qpoint(qpoint)
     S_inv = np.linalg.inv(S)
     sc_lattice = np.dot(S, parent_lattice)
     
     M = int(np.max(np.diag(S))) + 2
-    lattice_trans_n = []
-    for nx, ny, nz in product(range(-M, M+1), repeat=3):
-        n = np.array([nx, ny, nz])
-        n_sc = np.dot(S_inv, n)
-        if np.all(n_sc > -1e-5) and np.all(n_sc < 1 - 1e-5):
-            lattice_trans_n.append(n)
+    lattice_trans_n = get_lattice_translations_for_supercell(S_inv, M)
     
     sc_rots = []
     sc_trans = []

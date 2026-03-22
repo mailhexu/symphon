@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict, Any
 
-from symphon.chiral_transitions import is_sohncke, get_enantiomorph_partner, SohnckeClass
+from symphon.chiral import is_sohncke, get_enantiomorph_partner, SohnckeClass
 
 @dataclass
 class MSGChiralityInfo:
