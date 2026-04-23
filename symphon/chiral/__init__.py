@@ -29,6 +29,12 @@ from .transitions import (
     format_transition_table,
     format_lost_operations_detail
 )
+from .circular import (
+    CircularMode,
+    CircularPhononFinder
+)
+from .sam import SAMCalculator
+from .abstract_circular import AbstractCircularPhononFinder
 
 __all__ = [
     'ImproperOperationType',
@@ -49,5 +55,9 @@ __all__ = [
     'opd_to_symbolic',
     'ChiralTransitionFinder',
     'format_transition_table',
-    'format_lost_operations_detail'
+    'format_lost_operations_detail',
+    'CircularMode',
+    'CircularPhononFinder',
+    'SAMCalculator',
+    'AbstractCircularPhononFinder'
 ]

@@ -31,6 +31,8 @@ def main() -> None:
     subparsers.add_parser("abstract-magnetic", help="Abstract chiral magnetic transitions by space group")
     subparsers.add_parser("msg", help="Identify chirality of a Magnetic Space Group")
     subparsers.add_parser("modulate", help="Generate modulated supercells using high-symmetry basis")
+    subparsers.add_parser("circular", help="Find circularly polarized phonons from PHBST data")
+    subparsers.add_parser("circular-abstract", help="Identify potential circular phonon IRs purely from space group symmetry")
 
     # Parse only the subcommand name; let each sub-CLI re-parse sys.argv[2:].
     if len(sys.argv) < 2:
@@ -73,6 +75,16 @@ def main() -> None:
     elif subcommand == "modulate":
         from symphon.cli_modulate import main as _main
         sys.argv = ["symphon modulate"] + sys.argv[2:]
+        _main()
+
+    elif subcommand == "circular":
+        from symphon.cli_circular import main as _main
+        sys.argv = ["symphon circular"] + sys.argv[2:]
+        _main()
+
+    elif subcommand == "circular-abstract":
+        from symphon.cli_circular_abstract import main as _main
+        sys.argv = ["symphon circular-abstract"] + sys.argv[2:]
         _main()
 
     else:

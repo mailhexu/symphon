@@ -33,6 +33,20 @@ This directory contains organized examples demonstrating different features of `
 - Example: Analysis of Gamma, X, and M points
 - Features: Both backends (phonopy + irrep), path analysis
 
+### 5. Chiral phonon (`5_chiral_phonon/`)
+**Chiral phase transition analysis**
+- Input: Phonopy params file
+- Features: Sohncke group classification, chiral transition detection
+
+### 6. Circular phonon (`6_circular_phonon/`)
+**Circularly polarized phonon analysis**
+- Self-contained API examples (no data files needed for abstract analysis)
+- Features:
+  - SAM (Spin Angular Momentum) calculation
+  - Group-theory prediction of circular phonon candidates
+  - Full circular phonon analysis from PHBST files
+- **Start here** for circular/chiral phonon physics
+
 ## Quick Start
 
 ### For ABINIT users:
@@ -59,6 +73,14 @@ This single command automatically analyzes **all** high-symmetry points!
 | **k-point specification** | Index-based | Automatic discovery |
 | **Best for** | ABINIT workflows | General phonopy use |
 | **CLI command** | `symphon anaddb-irreps` | `symphon phonopy-irreps` |
+
+### Circular Phonon Tools
+
+| Tool | CLI Command | Description |
+|------|-------------|-------------|
+| Abstract finder | `symphon circular-abstract --sg <N>` | Group-theory prediction (no data needed) |
+| All Sohncke scan | `symphon circular-abstract --all-sohncke` | Scan 65 chiral-supporting groups |
+| Concrete finder | `symphon-circular <PHBST.nc>` | Full analysis from phonon data |
 
 ## Requirements
 
