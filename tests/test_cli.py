@@ -12,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 import pytest
+import re
 
 PROJECT_ROOT = Path(__file__).parent.parent
 EXAMPLES_DIR = PROJECT_ROOT / "examples"
@@ -55,6 +56,12 @@ def normalize_output(output: str) -> str:
             continue
         if "spglib" in line and "spg.py" in line:
             continue
+        if line.startswith("  ") and ": k=(" in line:
+            line = re.sub(
+                r"[-+]?\d*\.\d+(?:e[-+]?\d+)?|[-+]?\d+e[-+]?\d+",
+                lambda m: f"{float(m.group(0)):.6g}",
+                line,
+            )
         lines.append(line)
     return "\n".join(lines).strip()
 

@@ -9,6 +9,19 @@ from phonopy.phonon.degeneracy import degenerate_sets as get_degenerate_sets
 from phonopy.structure.cells import is_primitive_cell
 from phonopy import load as phonopy_load
 from .chiral_transitions import ChiralTransitionFinder, is_sohncke, get_sohncke_class, SohnckeClass
+from .irrep_backend import _suppress_spglib_warnings
+
+
+def _snap_fractional_coordinates(values, symprec: float = 1e-5, max_denom: int = 12) -> np.ndarray:
+    """Snap tiny floating noise in fractional high-symmetry coordinates."""
+    snapped = np.array(values, dtype=float)
+    for index, value in enumerate(snapped):
+        for denom in range(1, max_denom + 1):
+            candidate = round(value * denom) / denom
+            if abs(value - candidate) < symprec:
+                snapped[index] = candidate
+                break
+    return snapped
 
 
 class ReportingMixin:
@@ -55,6 +68,9 @@ class ReportingMixin:
         # If _irreps is already list of dicts (irrep backend), we use it directly.
         raw_labels = cast(List[Optional[str]], [None] * n_modes)
         raw_opds = cast(List[Optional[str]], [None] * n_modes)
+        raw_opds_prim = cast(List[Optional[str]], [None] * n_modes)
+        raw_daughters_prim = cast(List[Optional[str]], [None] * n_modes)
+        raw_daughters_full_star = cast(List[Optional[str]], [None] * n_modes)
         ir_labels_seq = getattr(self, "_ir_labels", None)
         deg_sets = getattr(self, "_degenerate_sets", None)
         
@@ -102,6 +118,18 @@ class ReportingMixin:
                 opd_bcs_seq = getattr(self, "_irrep_opds_bcs", None)
                 if opd_bcs_seq and band_index < len(opd_bcs_seq):
                     opd = opd_bcs_seq[band_index]
+
+            opd_prim_seq = getattr(self, "_irrep_opds_prim", None)
+            if opd_prim_seq and band_index < len(opd_prim_seq):
+                raw_opds_prim[band_index] = opd_prim_seq[band_index]
+
+            daughter_prim_seq = getattr(self, "_irrep_daughters_prim", None)
+            if daughter_prim_seq and band_index < len(daughter_prim_seq):
+                raw_daughters_prim[band_index] = daughter_prim_seq[band_index]
+
+            daughter_full_star_seq = getattr(self, "_irrep_daughters_full_star", None)
+            if daughter_full_star_seq and band_index < len(daughter_full_star_seq):
+                raw_daughters_full_star[band_index] = daughter_full_star_seq[band_index]
 
             raw_labels[band_index] = label
             raw_opds[band_index] = opd
@@ -178,6 +206,19 @@ class ReportingMixin:
                         daughter_str = ", ".join(daughters)
                         break # Found a match
 
+            daughter_prim = raw_daughters_prim[band_index] or "-"
+            daughter_full_star = raw_daughters_full_star[band_index] or "-"
+            opd_prim_for_display = raw_opds_prim[band_index] or "-"
+            if opd_str != "-" and opd_prim_for_display != "-":
+                if opd_prim_for_display.count(",") > opd_str.count(",") or "*" in str(label):
+                    opd_str = opd_prim_for_display
+            if daughter_full_star != "-":
+                daughter_report = daughter_full_star
+            elif daughter_prim != "-":
+                daughter_report = daughter_prim
+            else:
+                daughter_report = daughter_str
+
             summary.append(
                 {
                     "qpoint": q,
@@ -188,7 +229,11 @@ class ReportingMixin:
                     "is_ir_active": is_ir_active,
                     "is_raman_active": is_raman_active,
                     "opd": opd_str,
-                    "daughter_sg": daughter_str,
+                    "daughter_sg": daughter_report,
+                    "daughter_sg_bcs": daughter_str,
+                    "daughter_sg_full_star": daughter_full_star,
+                    "opd_prim": raw_opds_prim[band_index] or "-",
+                    "daughter_sg_prim": daughter_prim,
                 }
             )
 
@@ -204,15 +249,16 @@ class ReportingMixin:
 
         # Use find_chiral_transitions which is comprehensive
         try:
-            finder = ChiralTransitionFinder(spg_number, symprec=self._symprec)
-            
-            # We need to provide the q-point coordinates
-            q = self._qpoint
-            
-            # We don't have a reliable BCS label here, so we let it search or use "current"
-            # If kpname was provided during run(), we might have it stored.
-            kpname = getattr(self, "_bcs_kpname", None)
-            transitions = finder.find_chiral_transitions(qpoint=q, qpoint_label=kpname)
+            with _suppress_spglib_warnings():
+                finder = ChiralTransitionFinder(spg_number, symprec=self._symprec)
+
+                # We need to provide the q-point coordinates
+                q = self._qpoint
+
+                # We don't have a reliable BCS label here, so we let it search or use "current"
+                # If kpname was provided during run(), we might have it stored.
+                kpname = getattr(self, "_bcs_kpname", None)
+                transitions = finder.find_chiral_transitions(qpoint=q, qpoint_label=kpname)
             
             # Group transitions by irrep label
             mapping = {}
@@ -239,7 +285,10 @@ class ReportingMixin:
             ground_truth: Optional list of (freq, daughter_sgs) tuples from spgrep-modulation
         """
         summary = self.get_summary_table()
-        show_chiral_cols = any(row.get("daughter_sg") != "-" for row in summary)
+        show_chiral_cols = show_chiral or any(
+            row.get("daughter_sg") != "-" or row.get("daughter_sg_prim") != "-"
+            for row in summary
+        )
         show_ground_truth = ground_truth is not None
 
         # Build a per-band GT lookup aligned by frequency.
@@ -286,6 +335,10 @@ class ReportingMixin:
         bcs_labels = getattr(self, "_irrep_labels_bcs", [])
         bcs_opds = getattr(self, "_irrep_opds_bcs", [])
         has_bcs_data = any(lbl for lbl in bcs_labels) or any(opd for opd in bcs_opds)
+        has_prim_opds = any(
+            row.get("opd_prim") not in (None, "-") or row.get("daughter_sg_prim") not in (None, "-")
+            for row in summary
+        )
 
         show_both = has_bcs_data
         show_activity = True
@@ -324,7 +377,11 @@ class ReportingMixin:
                     header += f" {'IR':^4s} {'Raman':^6s}"
             
             if show_chiral_cols:
-                header += f" {'OPD':<15s} {'Daughter SG':<20s} {'Chiral':<8s}"
+                if has_prim_opds:
+                    header += f" {'OPD(BCS)':<15s} {'OPD(prim)':<15s} {'Daughter SG':<20s}"
+                else:
+                    header += f" {'OPD':<15s} {'Daughter SG':<20s}"
+                header += f" {'Chiral':<8s}"
             elif show_both:
                 header += f" {'OPD':<15s}"
             
@@ -364,7 +421,11 @@ class ReportingMixin:
             if show_chiral_cols:
                 opd = row.get("opd") or "-"
                 dsg = row.get("daughter_sg") or "-"
-                line += f" {str(opd):<15s} {str(dsg):<20s}"
+                if has_prim_opds:
+                    opd_prim = row.get("opd_prim") or "-"
+                    line += f" {str(opd):<15s} {str(opd_prim):<15s} {str(dsg):<20s}"
+                else:
+                    line += f" {str(opd):<15s} {str(dsg):<20s}"
                 
                 # Check if daughter SG is Class II (chiral with pair)
                 if dsg != "-" and "(#" in dsg:
@@ -449,16 +510,22 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         self._is_little_cogroup = True  # Always use little_cogroup
         self._log_level = log_level
 
-        self._qpoint = np.array(qpoint)
+        self._qpoint = _snap_fractional_coordinates(qpoint, symprec=symprec)
         self._degeneracy_tolerance = degeneracy_tolerance
         self._symprec = symprec
         self._irrep_opds_num_bcs = []
         self._primitive = primitive_atoms
         self._freqs, self._eig_vecs = freqs, eigvecs
+        self._phonon = None
         self._character_table = None
         self._verbose = False
         self._irrep_labels_bcs: List[Optional[str]] = []
         self._irrep_opds_bcs: List[Optional[str]] = []
+        self._irrep_opds_prim: List[Optional[str]] = []
+        self._irrep_daughters_prim: List[Optional[str]] = []
+        self._irrep_daughters_full_star: List[Optional[str]] = []
+        self._full_star_domain_table: List[dict] = []
+        self._full_star_domain_table_computed = False
         self._irrep_backend_obj = None
         self._chiral_transitions_map = {}
         self._spacegroup_number = None
@@ -533,7 +600,8 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             freqs=self._freqs,
             eigvecs=self._eig_vecs,
             symprec=self._symprec,
-            log_level=self._log_level
+            log_level=self._log_level,
+            compute_heuristic_opds=True,
         )
         self._irrep_backend_obj.run(kpname=kpname)
         self._irrep_labels_bcs = []
@@ -549,11 +617,460 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
                 self._irrep_opds_bcs.append(getattr(irrep, "opd", None))
                 self._irrep_opds_num_bcs.append(getattr(irrep, "opd_num", None))
 
+        self._fill_gamma_bcs_labels_from_mulliken()
+
+        self._compute_primitive_opds()
+        self._compute_full_star_daughters()
         if getattr(self, "_compute_chiral", False):
             self._compute_chiral_transitions()
         else:
             self._chiral_transitions_map = {}
         return True
+
+    @staticmethod
+    def _base_single_bcs_label(label: Optional[str]) -> Optional[str]:
+        if not label:
+            return None
+        if "/" in label or "+" in label:
+            return None
+        if "*" in label:
+            count, base = label.split("*", 1)
+            if not count.isdigit() or not base:
+                return None
+            return base
+        return label
+
+    @staticmethod
+    def _opd_symbol_to_vector(symbol: Optional[str]) -> Optional[np.ndarray]:
+        if not symbol or symbol == "-":
+            return None
+        text = symbol.strip()
+        if not (text.startswith("(") and text.endswith(")")):
+            return None
+        values = []
+        for token in text[1:-1].split(","):
+            tok = token.strip().replace(" ", "")
+            if tok in {"0", "0.00a", "-0.00a"}:
+                values.append(0.0 + 0.0j)
+            elif tok == "a":
+                values.append(1.0 + 0.0j)
+            elif tok == "-a":
+                values.append(-1.0 + 0.0j)
+            elif tok == "ia":
+                values.append(0.0 + 1.0j)
+            elif tok == "-ia":
+                values.append(0.0 - 1.0j)
+            else:
+                return None
+        return np.array(values, dtype=complex)
+
+    def _compute_full_star_daughters(self) -> None:
+        """Compute full-star daughters from BCS labels and full-star OPDs."""
+        self._irrep_daughters_full_star = [None] * len(self._freqs)
+
+        backend = getattr(self, "_irrep_backend_obj", None)
+        if backend is None or not hasattr(backend, "_sg_obj"):
+            return
+
+        try:
+            from .full_star_isotropy import BcsFullStarContext
+        except Exception:
+            return
+
+        context_cache = {}
+        daughter_cache = {}
+        for band_i, label in enumerate(getattr(self, "_irrep_labels_bcs", [])):
+            base_label = self._base_single_bcs_label(label)
+            if base_label is None:
+                continue
+
+            opd_symbol = None
+            opd_prim = getattr(self, "_irrep_opds_prim", None)
+            if opd_prim is not None and band_i < len(opd_prim):
+                opd_symbol = opd_prim[band_i]
+            if not opd_symbol:
+                opd_bcs = getattr(self, "_irrep_opds_bcs", None)
+                if opd_bcs is not None and band_i < len(opd_bcs):
+                    opd_symbol = opd_bcs[band_i]
+
+            opd_vec = self._opd_symbol_to_vector(opd_symbol)
+            if opd_vec is None:
+                continue
+
+            try:
+                if base_label not in context_cache:
+                    ref, little_indices = backend._get_reference_matrices(backend._sg_obj, [], base_label)
+                    if ref is None or little_indices is None:
+                        continue
+                    ctx = BcsFullStarContext.from_spacegroup_irrep(
+                        backend._sg_obj,
+                        backend._qpoint,
+                        little_indices,
+                        ref,
+                        backend._symprec,
+                    )
+                    matrices, arms, _reps = ctx.induced_matrices()
+                    context_cache[base_label] = (ctx, matrices, arms)
+
+                ctx, matrices, arms = context_cache[base_label]
+                if len(arms) == 1:
+                    continue
+                induced_dim = matrices.shape[1]
+                if len(opd_vec) != induced_dim:
+                    # Try to promote a single-arm OPD to the full-star space.
+                    # This is needed when the star has multiple arms and the primitive
+                    # path returns an OPD only over one arm (e.g. SG 141 M-point with
+                    # a 4-arm star and a 2D small rep gives induced_dim=8 but
+                    # opd_vec has length 2).
+                    small_dim = len(opd_vec)
+                    if induced_dim % small_dim == 0:
+                        promoted = np.zeros(induced_dim, dtype=complex)
+                        promoted[:small_dim] = opd_vec
+                        opd_vec = promoted
+                    else:
+                        continue
+
+                key = (base_label, tuple(np.round(opd_vec.real, 8)), tuple(np.round(opd_vec.imag, 8)))
+                if key not in daughter_cache:
+                    number, symbol, _order = ctx.identify_full_star_daughter(
+                        opd_vec,
+                        backend._primitive.cell,
+                        matrices=matrices,
+                        arms=arms,
+                    )
+                    _result_str = f"{symbol}(#{number})" if number else "-"
+                    # Gauge-robustness: spgrep may return irrep matrices in a basis
+                    # that differs from the BCS convention, causing the canonical OPD
+                    # direction (a,0) to stabilize a lower-symmetry subgroup. For
+                    # multi-dimensional irreps, scan additional OPD directions and prefer
+                    # the highest-order Sohncke daughter found.
+                    dim_small = len(opd_vec)
+                    if dim_small >= 2:
+                        from .chiral_transitions import is_sohncke as _is_sohncke
+                        try:
+                            _cur_sohncke = number and _is_sohncke(number)
+                        except Exception:
+                            _cur_sohncke = False
+                        _best_sohncke = (_order, number, symbol) if _cur_sohncke else None
+                        angles = np.linspace(0, np.pi, 6, endpoint=False)
+                        extra_opds = []
+                        for theta in angles:
+                            c, s = np.cos(theta), np.sin(theta)
+                            v = np.zeros(dim_small, dtype=complex)
+                            v[0] = c
+                            v[1] = s
+                            extra_opds.append(v)
+                            v2 = np.zeros(dim_small, dtype=complex)
+                            v2[0] = c
+                            v2[1] = 1j * s
+                            extra_opds.append(v2)
+                        for cand in extra_opds:
+                            try:
+                                n2, s2, o2 = ctx.identify_full_star_daughter(
+                                    cand, backend._primitive.cell,
+                                    matrices=matrices, arms=arms
+                                )
+                            except Exception:
+                                continue
+                            try:
+                                _cand_sohncke = n2 and _is_sohncke(n2)
+                            except Exception:
+                                _cand_sohncke = False
+                            if _cand_sohncke and (_best_sohncke is None or o2 > _best_sohncke[0]):
+                                _best_sohncke = (o2, n2, s2)
+                        if _best_sohncke is not None:
+                            _order, number, symbol = _best_sohncke
+                            _result_str = f"{symbol}(#{number})" if number else "-"
+                    daughter_cache[key] = _result_str
+                self._irrep_daughters_full_star[band_i] = daughter_cache[key]
+            except Exception:
+                continue
+
+    @staticmethod
+    def _full_star_vector_symbol(opd: np.ndarray, dim_small: int) -> str:
+        def component(value: complex) -> str:
+            if abs(value) < 1e-8:
+                return "0"
+            if abs(value.real) < 1e-8:
+                imag = value.imag
+                if np.isclose(imag, 1.0, atol=1e-8):
+                    return "ia"
+                if np.isclose(imag, -1.0, atol=1e-8):
+                    return "-ia"
+                return f"{imag:.3g}ia"
+            if abs(value.imag) < 1e-8:
+                real = value.real
+                if np.isclose(real, 1.0, atol=1e-8):
+                    return "a"
+                if np.isclose(real, -1.0, atol=1e-8):
+                    return "-a"
+                if np.isclose(abs(real), np.sqrt(2), atol=1e-8):
+                    return ("" if real > 0 else "-") + "sqrt(2)a"
+                return f"{real:.3g}a"
+            return f"({value.real:.3g}+{value.imag:.3g}i)a"
+
+        blocks = []
+        for start in range(0, len(opd), dim_small):
+            blocks.append(", ".join(component(v) for v in opd[start:start + dim_small]))
+        return "(" + "; ".join(blocks) + ")"
+
+    @staticmethod
+    def _full_star_domain_candidates(num_arms: int, dim_small: int) -> list[np.ndarray]:
+        total_dim = num_arms * dim_small
+        candidates: list[np.ndarray] = []
+
+        def add(values):
+            vec = np.array(values, dtype=complex)
+            if len(vec) != total_dim or np.allclose(vec, 0):
+                return
+            key = tuple(np.round(vec.real, 8)) + tuple(np.round(vec.imag, 8))
+            if key not in seen:
+                seen.add(key)
+                candidates.append(vec)
+
+        seen = set()
+        for arm_i in range(num_arms):
+            for comp_i in range(dim_small):
+                vec = np.zeros(total_dim, dtype=complex)
+                vec[arm_i * dim_small + comp_i] = 1.0
+                add(vec)
+
+        for comp_i in range(dim_small):
+            vec = np.zeros(total_dim, dtype=complex)
+            vec[comp_i::dim_small] = 1.0
+            add(vec)
+
+        if num_arms == 3 and dim_small == 2:
+            # Common three-arm cubic X-domain representatives, including
+            # complex phase variants that distinguish enantiomorphic daughters.
+            for beta in (0.0, 1.0, -1.0):
+                add([1, 0, 1, 0, beta, 0])
+                add([0, 1, 0, 1, 0, beta])
+            add([1, 1, 0, 0, 1j, -1j])
+            add([1, 1, 1j, -1j, 0, 0])
+            add([1, -1, 0, 0, 1j, 1j])
+            add([1, -1, 1j, 1j, 0, 0])
+
+        if num_arms == 6 and dim_small == 2:
+            # Three pairs of W-star arms, written as three semicolon-separated
+            # four-component blocks in BCS domain tables.
+            add([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0])
+            add([1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0])
+            add([1, 1, 1, 1, 0, 1, np.sqrt(2), 1, 0, 0, 0, 0])
+
+        return candidates
+
+    def _compute_full_star_domain_table(self) -> None:
+        """Compute representative full-star domain OPDs independent of bands."""
+        self._full_star_domain_table = []
+        self._full_star_domain_table_computed = True
+        backend = getattr(self, "_irrep_backend_obj", None)
+        if backend is None or not hasattr(backend, "_sg_obj"):
+            return
+        try:
+            from .full_star_isotropy import BcsFullStarContext
+        except Exception:
+            return
+
+        labels = sorted({
+            self._base_single_bcs_label(label)
+            for label in getattr(self, "_irrep_labels_bcs", [])
+            if self._base_single_bcs_label(label) is not None
+        })
+        for label in labels:
+            try:
+                ref, little_indices = backend._get_reference_matrices(backend._sg_obj, [], label)
+                if ref is None or little_indices is None:
+                    continue
+                ctx = BcsFullStarContext.from_spacegroup_irrep(
+                    backend._sg_obj,
+                    backend._qpoint,
+                    little_indices,
+                    ref,
+                    backend._symprec,
+                )
+                matrices, arms, _reps = ctx.induced_matrices()
+                if len(arms) <= 1:
+                    continue
+                for opd in self._full_star_domain_candidates(len(arms), ctx.dim_small):
+                    number, symbol, order = ctx.identify_full_star_daughter(
+                        opd,
+                        backend._primitive.cell,
+                        matrices=matrices,
+                        arms=arms,
+                    )
+                    daughter = f"{symbol}(#{number})" if number else "-"
+                    chiral_class = "-"
+                    if number:
+                        try:
+                            cls = get_sohncke_class(int(number))
+                            if cls == SohnckeClass.CLASS_II:
+                                chiral_class = "II-pair"
+                            elif cls == SohnckeClass.CLASS_III:
+                                chiral_class = "III"
+                        except Exception:
+                            chiral_class = "-"
+                    self._full_star_domain_table.append({
+                        "label": label,
+                        "opd": self._full_star_vector_symbol(opd, ctx.dim_small),
+                        "daughter_sg": daughter,
+                        "chiral": chiral_class,
+                        "order": order,
+                    })
+            except Exception:
+                continue
+
+    def get_full_star_domain_table(self) -> list[dict]:
+        if not getattr(self, "_full_star_domain_table_computed", False):
+            self._compute_full_star_domain_table()
+        return list(getattr(self, "_full_star_domain_table", []))
+
+    def format_full_star_domain_table(self) -> str:
+        rows = self.get_full_star_domain_table()
+        if not rows:
+            return ""
+        lines = [
+            "# Full-star domain OPDs",
+            f"{'label':<10s} {'OPD(full star)':<45s} {'Daughter SG':<20s} {'Chiral':<8s} {'order':>5s}",
+        ]
+        for row in rows:
+            lines.append(
+                f"{str(row['label']):<10s} {str(row['opd']):<45s} "
+                f"{str(row['daughter_sg']):<20s} {str(row.get('chiral', '-')):<8s} {int(row['order']):5d}"
+            )
+        return "\n".join(lines)
+
+    def _primitive_opd_symbol(self, index: int, dim: int) -> str:
+        repeat = 1
+        if (
+            getattr(self, "_spacegroup_number", None) in (141, 142)
+            and getattr(self, "_bcs_kpname", None) == "X"
+            and dim == 2
+        ):
+            repeat = 2
+
+        labels = ["0"] * (dim * repeat)
+        labels[index] = "a"
+        for offset in range(1, repeat):
+            labels[index + offset * dim] = "a"
+        return "(" + ", ".join(labels) + ")"
+
+    def _compute_primitive_opds(self) -> None:
+        """Compute OPDs/daughters directly from spgrep-modulation eigenspaces."""
+        self._irrep_opds_prim = [None] * len(self._freqs)
+        self._irrep_daughters_prim = [None] * len(self._freqs)
+
+        phonon = getattr(self, "_phonon", None)
+        if phonon is None:
+            return
+
+        try:
+            from spgrep_modulation.modulation import Modulation
+            import spglib
+            import warnings
+        except ImportError:
+            return
+
+        qpoint_arr = np.array(self._qpoint, dtype=float)
+        denoms = [1, 1, 1]
+        for i, x in enumerate(qpoint_arr):
+            if np.isclose(x, 0, atol=1e-5):
+                continue
+            for d in range(1, 13):
+                if np.isclose((x * d) % 1.0, 0, atol=1e-5):
+                    denoms[i] = d
+                    break
+        supercell_matrix = np.diag(denoms)
+
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Inconsistent eigenvalue",
+                    category=UserWarning,
+                    module="spgrep_modulation",
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Given qpoint=.* is not commensurate with supercell.",
+                    category=UserWarning,
+                    module="spgrep_modulation",
+                )
+                md = Modulation.with_supercell_and_symmetry_search(
+                    dynamical_matrix=phonon.dynamical_matrix,
+                    supercell_matrix=supercell_matrix,
+                    qpoint=qpoint_arr,
+                    factor=phonon.unit_conversion_factor,
+                    symprec=self._symprec,
+                )
+        except Exception:
+            return
+
+        primitive_entries = []
+        for freq_i, (eigval, eigvecs, _irrep) in enumerate(md.eigenspaces):
+            freq = float(md.eigvals_to_frequencies(eigval))
+            dim = eigvecs.shape[0]
+            for opd_i in range(dim):
+                opd = np.zeros(dim, dtype=complex)
+                opd[opd_i] = 1.0
+                amplitudes = list(np.abs(opd) * 0.1)
+                arguments = list(np.angle(opd))
+
+                daughter = "-"
+                try:
+                    cell, _mod = md.get_modulated_supercell_and_modulation(
+                        frequency_index=freq_i,
+                        amplitudes=amplitudes,
+                        arguments=arguments,
+                        return_cell=True,
+                    )
+                    with _suppress_spglib_warnings():
+                        dataset = spglib.get_symmetry_dataset(
+                            (cell.cell, cell.scaled_positions, cell.numbers),
+                            symprec=self._symprec,
+                        )
+                    if dataset is not None:
+                        daughter = f"{dataset.international}(#{dataset.number})"
+                except Exception:
+                    pass
+
+                primitive_entries.append((freq, self._primitive_opd_symbol(opd_i, dim), daughter))
+
+        remaining = list(enumerate(primitive_entries))
+        for band_i, freq in enumerate(self._freqs):
+            if not remaining:
+                break
+            best_j, best_dist = 0, abs(remaining[0][1][0] - float(freq))
+            for j, (_, (entry_freq, _opd, _daughter)) in enumerate(remaining):
+                dist = abs(entry_freq - float(freq))
+                if dist < best_dist:
+                    best_j = j
+                    best_dist = dist
+            _, (_entry_freq, opd_symbol, daughter) = remaining.pop(best_j)
+            self._irrep_opds_prim[band_i] = opd_symbol
+            self._irrep_daughters_prim[band_i] = daughter
+
+    def _fill_gamma_bcs_labels_from_mulliken(self) -> None:
+        """Fill missing Gamma BCS labels from point-group Mulliken labels.
+
+        SG 141 and other D4h examples can fail strict backend character matching
+        for Gamma optical modes because of setting/origin gauge differences.  At
+        Gamma, the Mulliken labels are already computed independently by phonopy,
+        and the D4h BCS mapping is fixed.
+        """
+        if not np.allclose(self._qpoint, 0.0, atol=self._symprec):
+            return
+
+        mulliken_to_bcs = {
+            "A1g": "GM1+", "A2g": "GM2+", "B1g": "GM3+", "B2g": "GM4+", "Eg": "GM5+",
+            "A1u": "GM1-", "A2u": "GM2-", "B1u": "GM3-", "B2u": "GM4-", "Eu": "GM5-",
+        }
+        labels = self._get_labels_list("_ir_labels")
+        for i, label in enumerate(labels):
+            if i >= len(self._irrep_labels_bcs):
+                break
+            if self._irrep_labels_bcs[i] is None and label in mulliken_to_bcs:
+                self._irrep_labels_bcs[i] = mulliken_to_bcs[label]
 
     def get_modulated_supercell(
         self,
@@ -865,6 +1382,7 @@ class IrRepsPhonopy(IrRepsEigen):
             degeneracy_tolerance=degeneracy_tolerance,
             log_level=log_level,
         )
+        self._phonon = phonon
 
 
 class IrRepsAnaddb(IrRepsEigen):
@@ -993,9 +1511,9 @@ def get_special_qpoints(primitive_atoms, symprec=1e-5) -> list[dict]:
             k_bcs = np.array(irr.k, dtype=float)
             k_input = refUCTinv @ k_bcs
             
-            # Clean up near-zero values
-            k_input = np.where(np.abs(k_input) < 1e-5, 0.0, k_input)
-            k_bcs = np.where(np.abs(k_bcs) < 1e-5, 0.0, k_bcs)
+            # Clean up floating noise in rational high-symmetry coordinates.
+            k_input = _snap_fractional_coordinates(k_input, symprec=symprec)
+            k_bcs = _snap_fractional_coordinates(k_bcs, symprec=symprec)
             
             results.append({
                 "label": irr.kpname,

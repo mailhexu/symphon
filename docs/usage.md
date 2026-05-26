@@ -407,22 +407,26 @@ The `phonopy-irreps` CLI automatically identifies phonon modes that can induce *
 
 ### Additional Columns
 
-When chiral transitions are possible for a given mode, two additional columns appear:
+When order-parameter or daughter-space-group information is available, additional columns appear:
 
 | Column | Description |
 |--------|-------------|
-| **OPD** | Order Parameter Direction in irrep space. Symbolic notation like `(a)`, `(a,0)`, `(a,a,...)` indicates the direction of the order parameter that breaks symmetry. |
-| **Daughter SG** | Target chiral Sohncke space group(s) accessible via this transition, shown as `Symbol(#Number)`. Enantiomorphous pairs (Class II) are of particular interest. |
+| **OPD(BCS)** | Order Parameter Direction in the BCS/reference irrep basis when available. |
+| **OPD(prim)** | Primitive or full-star OPD used for primitive/full-star daughter identification. |
+| **Daughter SG** | Daughter space group accessible from the reported OPD, shown as `Symbol(#Number)`. Full-star daughters are preferred when available, then primitive daughters, then BCS fallback daughters. |
+| **Chiral** | Chiral classification of the daughter, such as `II-pair` or `III`. |
+
+The `--chiral` option controls chiral-oriented reporting and the additional generic chiral transition search. OPDs and daughter space groups are computed in normal runs when the required symmetry information is available.
 
 ### Example: BaTiO₃ at Gamma
 
 For cubic BaTiO₃ (Pm-3m, SG 221), the `T2u` mode can induce a transition to chiral R32:
 
 ```
-# band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman   OPD          Daughter SG
-    9      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    R32(#155)
-   10      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    R32(#155)
-   11      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    R32(#155)
+# band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman   OPD(BCS)     OPD(prim)    Daughter SG
+    9      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    (a,a,...)    R32(#155)
+   10      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    (a,a,...)    R32(#155)
+   11      8.5335       284.65  T2u         GM5-         .    .      (a,a,...)    (a,a,...)    R32(#155)
 ```
 
 The `OPD: (a,a,...)` indicates the order parameter lies along the diagonal direction in the 3D irrep space, leading to the chiral subgroup R32.
@@ -432,10 +436,10 @@ The `OPD: (a,a,...)` indicates the order parameter lies along the diagonal direc
 For orthorhombic TmFeO₃ (Pnma, SG 62), multiple `Au` modes can induce transitions to the chiral group P2₁2₁2₁:
 
 ```
-# band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman   OPD          Daughter SG
-    3      2.1839        72.85  Au          GM1-         .    .      (a)          P2_12_12_1(#19)
-   12      4.8692       162.42  Au          GM1-         .    .      (a)          P2_12_12_1(#19)
-   17      6.1103       203.82  Au          GM1-         .    .      (a)          P2_12_12_1(#19)
+# band  freq(THz)   freq(cm-1)   label(M)   label(BCS)  IR  Raman   OPD(BCS)     OPD(prim)    Daughter SG
+    3      2.1839        72.85  Au          GM1-         .    .      (a)          (a)          P2_12_12_1(#19)
+   12      4.8692       162.42  Au          GM1-         .    .      (a)          (a)          P2_12_12_1(#19)
+   17      6.1103       203.82  Au          GM1-         .    .      (a)          (a)          P2_12_12_1(#19)
 ```
 
 P2₁2₁2₁ (#19) is a **Class III Sohncke group**—a chiral space group that does not have a distinct enantiomorphous partner.
@@ -452,6 +456,8 @@ For space groups with transitions to **Class II** Sohncke groups, different OPDs
 ```
 
 Here, `(a,0)` leads to P4₃22 (#95) while `(0,a)` leads to its enantiomorph P4₁22 (#91). These two daughter phases are mirror images of each other—condensation of the same phonon with opposite OPD signs produces opposite handedness.
+
+For multi-arm zone-boundary cases, `symphon` may display a full-star OPD. For example, in SG 141/142 at the `X` point, a two-component small-representation direction can be reported as `(a,0,a,0)` or `(0,a,0,a)` so that the OPD corresponds to the full star used to identify daughters such as P4₁22 (#91), P4₃22 (#95), P4₁2₁2 (#92), and P4₃2₁2 (#96).
 
 ### When Chiral Transitions Appear
 

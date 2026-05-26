@@ -398,15 +398,26 @@ def main_phonopy() -> None:
         # Optional verbose output
         if args.show_verbose or args.verbose_file:
             verbose_text = irr.get_verbose_output()
-            
+            domain_text = ""
+            if hasattr(irr, "format_full_star_domain_table"):
+                domain_text = irr.format_full_star_domain_table()
+                if domain_text:
+                    domain_text += "\n"
+
             if args.verbose_file:
                 # Append to file for each k-point
                 mode = 'a' if kpname != sorted(high_sym_points.keys())[0] else 'w'
                 with open(args.verbose_file, mode, encoding="utf-8") as fh:
                     fh.write(f"\n# {kpname} point\n")
+                    if domain_text:
+                        fh.write(domain_text)
+                        fh.write("\n")
                     fh.write(verbose_text)
             elif args.show_verbose:
                 print()
+                if domain_text:
+                    print(domain_text, end="")
+                    print()
                 print(f"# Verbose output for {kpname}")
                 print(verbose_text, end="")
 

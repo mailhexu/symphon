@@ -41,49 +41,47 @@ def read_phbst_freqs_and_eigvecs(fname):
     """
     Alternative implementation of read_phbst_freqs_and_eigvecs using netCDF4 directly.
     """
-    nc = netCDF4.Dataset(fname, 'r')
+    with netCDF4.Dataset(fname, 'r') as nc:
+        # Read structure
+        rprimd = nc.variables['primitive_vectors'][:]  # Bohr
+        xred = nc.variables['reduced_atom_positions'][:]  # fractional
+        znucl = nc.variables['atomic_numbers'][:]
+        typat = nc.variables['atom_species'][:]  # 1-based index to znucl
 
-    # Read structure
-    rprimd = nc.variables['primitive_vectors'][:]  # Bohr
-    xred = nc.variables['reduced_atom_positions'][:]  # fractional
-    znucl = nc.variables['atomic_numbers'][:]
-    typat = nc.variables['atom_species'][:]  # 1-based index to znucl
+        numbers = [int(znucl[t - 1]) for t in typat]
+        masses = [atomic_masses[i] for i in numbers]
 
-    numbers = [int(znucl[t - 1]) for t in typat]
-    masses = [atomic_masses[i] for i in numbers]
+        cell = rprimd * units.Bohr
+        atoms = Atoms(numbers=numbers,
+                      masses=masses,
+                      scaled_positions=xred,
+                      cell=cell,
+                      pbc=True)
 
-    cell = rprimd * units.Bohr
-    atoms = Atoms(numbers=numbers,
-                  masses=masses,
-                  scaled_positions=xred,
-                  cell=cell,
-                  pbc=True)
+        # Read q-points
+        qpoints = nc.variables['qpoints'][:]
 
-    # Read q-points
-    qpoints = nc.variables['qpoints'][:]
+        # Read frequencies in eV (ABINIT writes them in eV in _PHBST.nc)
+        freqs_ev = nc.variables['phfreqs'][:]
+        freqs = freqs_ev * EV_TO_THZ
 
-    # Read frequencies in eV (ABINIT writes them in eV in _PHBST.nc)
-    freqs_ev = nc.variables['phfreqs'][:]
-    freqs = freqs_ev * EV_TO_THZ
+        # Read eigenvectors (phdispl_cart)
+        # shape is (nqpt, nbranch, nbranch, 2)
+        d_real = nc.variables['phdispl_cart'][:, :, :, 0]
+        d_imag = nc.variables['phdispl_cart'][:, :, :, 1]
+        displ_carts = d_real + 1j * d_imag
 
-    # Read eigenvectors (phdispl_cart)
-    # shape is (nqpt, nbranch, nbranch, 2)
-    d_real = nc.variables['phdispl_cart'][:, :, :, 0]
-    d_imag = nc.variables['phdispl_cart'][:, :, :, 1]
-    displ_carts = d_real + 1j * d_imag
+        nqpts = len(qpoints)
+        nbranch = 3 * len(numbers)
+        evecs = np.zeros([nqpts, nbranch, nbranch], dtype='complex128')
 
-    nqpts = len(qpoints)
-    nbranch = 3 * len(numbers)
-    evecs = np.zeros([nqpts, nbranch, nbranch], dtype='complex128')
+        for iqpt, qpt in enumerate(qpoints):
+            for ibranch in range(nbranch):
+                evec = displacement_cart_to_evec(displ_carts[iqpt, ibranch, :],
+                                                 masses,
+                                                 xred,
+                                                 qpoint=qpt,
+                                                 add_phase=True)
+                evecs[iqpt, :, ibranch] = evec
 
-    for iqpt, qpt in enumerate(qpoints):
-        for ibranch in range(nbranch):
-            evec = displacement_cart_to_evec(displ_carts[iqpt, ibranch, :],
-                                             masses,
-                                             xred,
-                                             qpoint=qpt,
-                                             add_phase=True)
-            evecs[iqpt, :, ibranch] = evec
-
-    nc.close()
     return atoms, qpoints, freqs, evecs

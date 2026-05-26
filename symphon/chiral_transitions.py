@@ -42,7 +42,12 @@ try:
 except ImportError:
     from spgrep.representation import get_character
 
-from spgrep_modulation.isotropy import IsotropyEnumerator
+try:
+    from spgrep_modulation.isotropy import IsotropyEnumerator
+    HAS_SPGREP_MODULATION = True
+except ImportError:
+    IsotropyEnumerator = None  # type: ignore[assignment]
+    HAS_SPGREP_MODULATION = False
 
 # Flags are kept for compatibility if needed, but are now always True
 HAS_SPGLIB = True
@@ -744,10 +749,12 @@ class ChiralTransitionFinder:
         target_hall = 0
         for hall_number in range(1, 531):
             sg_type = spglib.get_spacegroup_type(hall_number)
-            if sg_type is not None and sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0) == self.spg_number:
+            sg_number = sg_type.get('number', 0) if isinstance(sg_type, dict) else getattr(sg_type, 'number', 0)
+            if sg_type is not None and sg_number == self.spg_number:
                 # Prefer hexagonal setting for trigonal systems to match our generic lattice
                 if 143 <= self.spg_number <= 167:
-                    if sg_type.get('choice', '') if isinstance(sg_type, dict) else getattr(sg_type, 'choice', '') == 'H':
+                    sg_choice = sg_type.get('choice', '') if isinstance(sg_type, dict) else getattr(sg_type, 'choice', '')
+                    if sg_choice == 'H':
                         target_hall = hall_number
                         break
                     elif target_hall == 0:
@@ -1134,26 +1141,25 @@ class ChiralTransitionFinder:
                 "Install with: pip install irrep"
             )
 
-        sg = SpaceGroupIrreps.from_cell(
-            cell=(np.eye(3), [[0, 0, 0]], [1]),
-            spinor=False,
-            include_TR=False,
-            search_cell=True,
-            symprec=self.symprec
-        )
-
         try:
-            bcs_table = sg.get_irreps_from_table(qpoint_label, qpoint)
+            table = IrrepTable(str(self.spg_number), spinor=False)
+            target_irreps = [irr for irr in table.irreps if irr.kpname == qpoint_label]
+            if not target_irreps:
+                target_irreps = [
+                    irr for irr in table.irreps
+                    if np.allclose((np.array(irr.k, dtype=float) - qpoint + 0.5) % 1.0, 0.5)
+                ]
         except Exception:
             return []
 
         results = []
-        for label, char_dict in bcs_table.items():
+        for irr in target_irreps:
+            char_dict = irr.characters
             char_values = list(char_dict.values())
             dim = int(round(abs(char_values[0]))) if char_values else 1
 
             results.append({
-                'label': label,
+                'label': irr.name,
                 'dimension': dim,
                 'characters': char_dict,
             })
@@ -1584,7 +1590,7 @@ class ChiralTransitionFinder:
         
         k_points = star if star is not None else [qpoint_prim]
         for k_pt in k_points:
-            k_conv = np.dot(P.T, k_pt)
+            k_conv = np.dot(P_inv, k_pt)
             for i, x in enumerate(k_conv):
                 if np.isclose(x, 0, atol=1e-5):
                     continue

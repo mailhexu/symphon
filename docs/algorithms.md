@@ -130,7 +130,8 @@ matrices in `mapping_table` give identical results to Cartesian matrices.
 ## 3. BCS Labels (irrep backend)
 
 Entry point: `IrRepsEigen.run()` always launches `IrRepsIrrep` after the phonopy
-step.  The full implementation is in `irrep_backend.py`.
+step. The full implementation is in `irrep_backend.py`. BCS labels and BCS OPDs
+are computed in normal runs; they are not gated by the `--chiral` CLI option.
 
 ```mermaid
 flowchart TD
@@ -205,7 +206,43 @@ flowchart TD
 
 ---
 
-## 4. Chiral Phase Transitions
+## 4. OPDs and Daughter Space Groups
+
+Entry point: `IrRepsEigen.run()` computes the OPD and daughter-space-group data
+as part of the normal irrep workflow. The `--chiral` flag only controls the
+additional chiral transition search and chiral-oriented display.
+
+```mermaid
+flowchart TD
+    A([IrRepsEigen.run&#40;&#41;]) --> B["IrRepsIrrep&#40;compute_heuristic_opds=True&#41;\n→ _irrep_labels_bcs\n→ _irrep_opds_bcs\n→ _irrep_opds_num_bcs"]
+
+    B --> C["_compute_primitive_opds&#40;&#41;\nspgrep_modulation.Modulation\n→ _irrep_opds_prim\n→ _irrep_daughters_prim"]
+
+    C --> D["_compute_full_star_daughters&#40;&#41;\nBcsFullStarContext\n→ _irrep_daughters_full_star"]
+
+    D --> E{_compute_chiral?}
+    E -- Yes --> F["_compute_chiral_transitions&#40;&#41;\n→ _chiral_transitions_map"]
+    E -- No --> G["_chiral_transitions_map = &#123;&#125;"]
+
+    F --> H["get_summary_table&#40;&#41;"]
+    G --> H
+
+    H --> I["OPD display:\nprefer primitive/full-star OPD\nwhen more informative than OPD&#40;BCS&#41;"]
+
+    H --> J["Daughter SG priority:\n1. full-star daughter\n2. primitive spgrep-modulation daughter\n3. BCS/chiral fallback"]
+```
+
+The primitive OPD path builds modulated supercells with `spgrep-modulation` and
+standardizes their symmetry with `spglib`. The full-star path builds an induced
+representation over all arms of the wave-vector star and identifies the daughter
+as the stabilizer of the full-star OPD. For SG 141/142 at the `X` point, this
+turns two-component single-arm directions into four-component full-star
+directions such as `(a, 0, a, 0)` and `(0, a, 0, a)`, recovering daughters such
+as `P4_122(#91)`, `P4_322(#95)`, `P4_12_12(#92)`, and `P4_32_12(#96)`.
+
+---
+
+## 5. Chiral Phase Transitions
 
 Entry point: `ReportingMixin._compute_chiral_transitions()` — called from
 `IrRepsEigen.run()` only when `self._compute_chiral == True`.

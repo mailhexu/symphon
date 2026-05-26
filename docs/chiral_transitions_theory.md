@@ -114,6 +114,16 @@ Common notation uses symbols like $(a,0,0)$, $(a,a,0)$, $(a,b,0)$ to denote the 
 - $(a,a,0)$: One free parameter, equal components along axes 1 and 2
 - $(a,b,0)$: Two free parameters
 
+For a zone-boundary phonon, the OPD must be interpreted together with the wave-vector star. Let the star of **k** have arms $\{\mathbf{k}_1,\ldots,\mathbf{k}_m\}$ and let the small representation at one arm have dimension $d$. The full order parameter then lives in the induced, multi-arm space
+
+$$
+\boldsymbol{\eta} = (\eta_{1,1},\ldots,\eta_{1,d};\eta_{2,1},\ldots,\eta_{2,d};\ldots;\eta_{m,1},\ldots,\eta_{m,d}),
+$$
+
+with dimension $md$. A single-arm OPD such as $(a,0)$ therefore does not always contain enough information to identify the daughter space group. If the relevant distortion transforms on a two-arm star, the corresponding full-star OPD may be $(a,0,a,0)$ or $(0,a,0,a)$. `symphon` distinguishes these coordinate systems by reporting `OPD(BCS)`, the direction in the BCS/reference irrep basis, and `OPD(prim)`, the primitive or full-star direction used for daughter identification.
+
+The basis of the OPD is not arbitrary in the implementation. The BCS label and `OPD(BCS)` are tied to the Bilbao crystallographic setting through the `irrep` package's standard-cell metadata. The primitive/full-star OPD is tied to the primitive phonon calculation and is the direction used to build modulated structures or full-star stabilizers. When the primitive/full-star OPD has more components than the BCS small-representation OPD, the displayed OPD is promoted to the more informative full-star form.
+
 ### 3.4 Maximal Isotropy Subgroups
 
 The **maximal isotropy subgroups** are the highest-order subgroups that can be obtained for a given irrep. They correspond to the "directions" of maximum symmetry breaking. These can be systematically enumerated using the **Chain Rule** and **Subgroup Criterion**.
@@ -170,16 +180,22 @@ The enantiomeric domains are:
 ### 5.1 Algorithm Overview
 
 ```
-For each parent space group (non-Sohncke):
-    For each special q-point:
-        For each irrep at that q-point:
-            1. Get small representation matrices
-            2. Enumerate maximal isotropy subgroups
-            3. For each isotropy subgroup + OPD:
-                a. Identify daughter space group
-                b. Check if daughter is Sohncke
-                c. If Sohncke: record chiral transition
+For each phonon q-point:
+    1. Standardize the parent cell and q-point in the BCS setting.
+    2. Build phonon representation matrices on each degenerate eigenspace.
+    3. Match representation characters to BCS irreducible representations.
+    4. Determine OPDs in the BCS/reference representation basis.
+    5. Determine primitive OPDs and primitive daughter groups with spgrep-modulation.
+    6. If a full-star OPD is available, induce the small representation to the star of k.
+    7. Identify the full-star daughter as the stabilizer of the full-star OPD.
+    8. Report Daughter SG using the priority: full-star daughter, primitive daughter, BCS fallback.
+
+If chiral reporting is requested:
+    9. Classify the reported daughters as Class II, Class III, or non-Sohncke.
+    10. Search additional generic chiral transitions when needed.
 ```
+
+The OPD and daughter-space-group calculation is part of the normal irrep workflow. The `--chiral` option affects chiral-oriented output and the additional generic transition search; it does not enable or disable OPD computation, primitive daughter identification, or full-star daughter identification.
 
 ### 5.2 Key Computational Tools
 
@@ -191,7 +207,39 @@ For each parent space group (non-Sohncke):
 | Isotropy subgroups | spgrep-modulation | `IsotropyEnumerator` |
 | Daughter space group | spglib | `get_spacegroup_type_from_symmetry()` |
 
-### 5.3 Sohncke Detection Algorithm
+### 5.3 BCS Label and OPD Matching
+
+For each q-point, the input primitive wave vector is mapped to the BCS reciprocal setting using the standardization matrix from `SpaceGroupIrreps`. The BCS irrep table supplies the reference character table $\chi_\alpha(g)$ for each irrep $\alpha$ at the matched special point. The phonon eigenvectors provide a calculated representation $M(g)$ on each degenerate eigenspace. The irrep multiplicity is estimated from the character inner product
+
+$$
+n_\alpha = \frac{1}{|G_\mathbf{k}|}\sum_{g\in G_\mathbf{k}} \chi_\alpha(g)^* \, \mathrm{Tr}\,M(g),
+$$
+
+where $G_\mathbf{k}$ is the little group of the wave vector. A block is assigned the BCS label whose reference characters match the calculated characters. For one- and multi-dimensional irreps, the code then aligns the calculated block matrices with the reference matrices by solving for a unitary intertwiner $U$ satisfying
+
+$$
+U M(g) U^\dagger \approx D_\alpha(g),
+$$
+
+where $D_\alpha(g)$ is the reference irrep matrix. The columns of this fitted basis define the BCS-reference OPD components. Ambiguous labels, for example labels containing `/`, are not forced into a BCS OPD because the reference basis is not unique.
+
+### 5.4 Primitive and Full-Star Daughter Identification
+
+The primitive OPD path uses `spgrep-modulation.Modulation` to construct representative OPD directions in the primitive phonon basis. For each OPD basis vector, a modulated supercell is generated and standardized with `spglib` to obtain a primitive daughter space group. This path is robust for single-arm distortions and provides a useful fallback daughter for many irreps.
+
+Some zone-boundary instabilities require the full star of the wave vector. In those cases, a single-arm modulation can identify only a little-group daughter, while the physically relevant isotropy subgroup is the stabilizer of a multi-arm OPD. The full-star method constructs an induced representation from the BCS-matched small representation. If $h$ maps the reference arm to another star arm, the induced matrix contains the appropriate permutation of star arms and the phase factors from the space-group multiplication law. Candidate full-star OPDs are then tested against the induced matrices.
+
+For a full-star OPD vector $\boldsymbol{\eta}$, the stabilizer is
+
+$$
+G_{\boldsymbol{\eta}} = \{\, g \in G : D_\mathrm{star}(g)\boldsymbol{\eta} = \boldsymbol{\eta} \,\},
+$$
+
+where $D_\mathrm{star}(g)$ is the induced representation of the parent operation on the full-star OPD space. Because a commensurate zone-boundary OPD also changes translational periodicity, compatible supercell translations are included in the stabilizer test. The surviving rotation-translation operations are finally passed to `spglib.get_spacegroup_type_from_symmetry()` to obtain the standardized daughter space-group symbol and number.
+
+When the full-star calculation succeeds, it is preferred over the primitive daughter because it uses the full parent star rather than only the little group of one arm. For SG 141/142 at the $X$ point, this distinction is essential: the two-arm star gives four-component directions such as $(a,0,a,0)$ and $(0,a,0,a)$ and recovers class-II daughters $P4_122$ (#91), $P4_322$ (#95), $P4_12_12$ (#92), and $P4_32_12$ (#96).
+
+### 5.5 Sohncke Detection Algorithm
 
 ```python
 def is_sohncke(spg_number):

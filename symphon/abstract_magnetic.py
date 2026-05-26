@@ -67,32 +67,33 @@ class AbstractMagneticTransitionFinder:
             except Exception:
                 continue
                 
-            for opd in enumerator.order_parameter_directions:
-                opd = opd.flatten()
-                if len(opd) > rep.shape[1]: continue
-                
-                sc_rots, sc_trans, sc_time = [], [], []
-                
-                for j in range(len(rots_lg)):
-                    r = rots_lg[j]
-                    t = trans_lg[j]
-                    mat_j = rep[j]
-                    
-                    for n in lattice_trans_n:
-                        phase = np.exp(-2j * np.pi * np.dot(qpoint_prim, n))
-                        mat = mat_j * phase
-                        transformed = np.dot(mat, opd)
-                        
-                        r_prime = np.dot(S_prim_inv, np.dot(r, S_prim))
-                        t_prime = np.dot(S_prim_inv, t + n)
-                        
-                        if np.linalg.norm(transformed - opd) < self.symprec:
-                            sc_rots.append(r_prime); sc_trans.append(t_prime); sc_time.append(0)
-                        elif np.linalg.norm(transformed + opd) < self.symprec:
-                            sc_rots.append(r_prime); sc_trans.append(t_prime); sc_time.append(1)
+            for subgroup_i, _indices in enumerate(enumerator.maximal_isotropy_subgroups):
+                for opd_raw in enumerator.order_parameter_directions[subgroup_i]:
+                    opd = opd_raw.flatten()
+                    if len(opd) > rep.shape[1]: continue
 
-                if sc_rots:
-                    self._eval_and_append(sc_rots, sc_trans, sc_time, lattice, i, rep.shape[1], opd, "1-k", results)
+                    sc_rots, sc_trans, sc_time = [], [], []
+
+                    for j in range(len(rots_lg)):
+                        r = rots_lg[j]
+                        t = trans_lg[j]
+                        mat_j = rep[j]
+
+                        for n in lattice_trans_n:
+                            phase = np.exp(-2j * np.pi * np.dot(qpoint_prim, n))
+                            mat = mat_j * phase
+                            transformed = np.dot(mat, opd)
+
+                            r_prime = np.dot(S_prim_inv, np.dot(r, S_prim))
+                            t_prime = np.dot(S_prim_inv, t + n)
+
+                            if np.linalg.norm(transformed - opd) < self.symprec:
+                                sc_rots.append(r_prime); sc_trans.append(t_prime); sc_time.append(0)
+                            elif np.linalg.norm(transformed + opd) < self.symprec:
+                                sc_rots.append(r_prime); sc_trans.append(t_prime); sc_time.append(1)
+
+                    if sc_rots:
+                        self._eval_and_append(sc_rots, sc_trans, sc_time, lattice, i, rep.shape[1], opd, "1-k", results)
                     
         # Multi-k transitions
         if include_multi_k:
@@ -175,4 +176,3 @@ class AbstractMagneticTransitionFinder:
                 })
         except Exception:
             pass
-

@@ -89,7 +89,7 @@ class MagneticTransitionFinder:
             [0, 0, lcm_denom if q[2] != 0 else 1]
         ])
         
-        sc_lattice = self.lattice @ sc_matrix
+        sc_lattice = sc_matrix @ self.lattice
         
         sc_positions = []
         sc_numbers = []
@@ -152,28 +152,29 @@ class MagneticTransitionFinder:
                 small_rep=info['mats']
             )
             
-            for opd in enumerator.order_parameter_directions:
-                if len(opd.shape) > 1 and opd.shape[0] > 1:
-                    continue # Skip continuous OPDs for now
-                    
-                sc_cell, is_zero = self.build_supercell(qpoint, opd, info['basis'])
-                if is_zero:
-                    continue
-                    
-                msg_dataset = get_magnetic_symmetry_dataset(sc_cell, symprec=self.symprec)
-                if msg_dataset is None:
-                    continue
-                    
-                msg_type = get_magnetic_spacegroup_type(msg_dataset.uni_number)
-                is_chiral = self.check_chirality(msg_dataset)
-                
-                results.append({
-                    'irrep_index': irrep_idx,
-                    'irrep_dim': info['dim'],
-                    'opd': opd.flatten().tolist(),
-                    'uni_number': msg_dataset.uni_number,
-                    'bns_number': msg_type.bns_number,
-                    'is_chiral': is_chiral,
-                })
+            for subgroup_i, _indices in enumerate(enumerator.maximal_isotropy_subgroups):
+                for opd in enumerator.order_parameter_directions[subgroup_i]:
+                    if len(opd.shape) > 1 and opd.shape[0] > 1:
+                        continue # Skip continuous OPDs for now
+
+                    sc_cell, is_zero = self.build_supercell(qpoint, opd, info['basis'])
+                    if is_zero:
+                        continue
+
+                    msg_dataset = get_magnetic_symmetry_dataset(sc_cell, symprec=self.symprec)
+                    if msg_dataset is None:
+                        continue
+
+                    msg_type = get_magnetic_spacegroup_type(msg_dataset.uni_number)
+                    is_chiral = self.check_chirality(msg_dataset)
+
+                    results.append({
+                        'irrep_index': irrep_idx,
+                        'irrep_dim': info['dim'],
+                        'opd': opd.flatten().tolist(),
+                        'uni_number': msg_dataset.uni_number,
+                        'bns_number': msg_type.bns_number,
+                        'is_chiral': is_chiral,
+                    })
                 
         return results

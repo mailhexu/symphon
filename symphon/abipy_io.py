@@ -62,36 +62,41 @@ def read_phbst_freqs_and_eigvecs(fname):
 
     try:
         ncfile = abilab.abiopen(fname)
-        struct = ncfile.structure
-        atoms = ncfile.structure.to_ase_atoms()
-        scaled_positions = struct.frac_coords
+        try:
+            struct = ncfile.structure
+            atoms = ncfile.structure.to_ase_atoms()
+            scaled_positions = struct.frac_coords
 
-        numbers = struct.atomic_numbers
-        masses = [atomic_masses[i] for i in numbers]
+            numbers = struct.atomic_numbers
+            masses = [atomic_masses[i] for i in numbers]
 
-        phbst = ncfile.phbands
-        qpoints = phbst.qpoints.frac_coords
-        nqpts = len(qpoints)
-        nbranch = 3 * len(numbers)
-        evecs = np.zeros([nqpts, nbranch, nbranch], dtype='complex128')
+            phbst = ncfile.phbands
+            qpoints = phbst.qpoints.frac_coords
+            nqpts = len(qpoints)
+            nbranch = 3 * len(numbers)
+            evecs = np.zeros([nqpts, nbranch, nbranch], dtype='complex128')
 
-        # Frequencies from abipy are in eV.
-        # Convert to THz for phonopy (which expects THz by default).
-        freqs_ev = phbst.phfreqs
-        ev_to_thz = phbst.phfactor_ev2units("THz")
-        freqs = freqs_ev * ev_to_thz
-        
-        displ_carts = phbst.phdispl_cart
+            # Frequencies from abipy are in eV.
+            # Convert to THz for phonopy (which expects THz by default).
+            freqs_ev = phbst.phfreqs
+            ev_to_thz = phbst.phfactor_ev2units("THz")
+            freqs = freqs_ev * ev_to_thz
 
-        for iqpt, qpt in enumerate(qpoints):
-            for ibranch in range(nbranch):
-                evec = displacement_cart_to_evec(displ_carts[iqpt, ibranch, :],
-                                                 masses,
-                                                 scaled_positions,
-                                                 qpoint=qpt,
-                                                 add_phase=True)
-                evecs[iqpt, :, ibranch] = evec
+            displ_carts = phbst.phdispl_cart
 
-        return atoms, qpoints, freqs, evecs
+            for iqpt, qpt in enumerate(qpoints):
+                for ibranch in range(nbranch):
+                    evec = displacement_cart_to_evec(displ_carts[iqpt, ibranch, :],
+                                                     masses,
+                                                     scaled_positions,
+                                                     qpoint=qpt,
+                                                     add_phase=True)
+                    evecs[iqpt, :, ibranch] = evec
+
+            return atoms, qpoints, freqs, evecs
+        finally:
+            close = getattr(ncfile, "close", None)
+            if close is not None:
+                close()
     except Exception:
         raise
