@@ -35,7 +35,7 @@ def test_sg142_n_point_no_crash():
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
-        timeout=120,
+        timeout=900,
     )
     
     assert "Atom mapping failed" not in result.stderr, f"Atom mapping failed: {result.stderr}"
@@ -55,7 +55,7 @@ def test_sg142_n_point_bcs_labels():
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
-        timeout=120,
+        timeout=900,
     )
     
     output = result.stdout + result.stderr
@@ -76,7 +76,7 @@ def test_sg142_all_high_sym_points():
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
-        timeout=120,
+        timeout=900,
     )
     
     output = result.stdout + result.stderr

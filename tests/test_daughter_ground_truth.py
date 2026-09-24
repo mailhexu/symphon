@@ -94,7 +94,7 @@ def get_ground_truth_daughters(ph, qpoint, supercell_matrix):
                 
                 dataset = spglib.get_symmetry_dataset(
                     (cell.cell, cell.scaled_positions, cell.numbers),
-                    symprec=1e-5
+                    symprec=1e-6
                 )
                 if dataset is not None:
                     sg_set.add((dataset.number, dataset.international))

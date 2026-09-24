@@ -9,6 +9,9 @@ except ImportError:
     HAS_ABIPY = False
 
 from .io_phbst import read_phbst_freqs_and_eigvecs as read_phbst_no_abipy
+# Moments below this (in Bohr magnetons) are treated as zero. Real magnetic
+# moments are O(0.1-10) muB; float round-trip noise is far below this floor.
+_MAGMOM_ZERO_TOL = 1e-6
 
 
 def ase_atoms_to_phonopy_atoms(atoms):
@@ -16,14 +19,18 @@ def ase_atoms_to_phonopy_atoms(atoms):
     convert ase Atoms object to PhonopyAtoms object
     """
     magmoms = atoms.get_initial_magnetic_moments()
-    if len(magmoms) == 0:
+    if len(magmoms) == 0 or np.all(np.abs(magmoms) < _MAGMOM_ZERO_TOL):
+        # Vanishing moments carry no information, but a non-None value makes
+        # phonopy>=4 Symmetry switch to spglib's magnetic-symmetry branch,
+        # which duplicates rotations (time-reversal pairs) and breaks the
+        # is_primitive_cell check. Compare against a tolerance, not exact
+        # zero, so round-trip noise in the moments does not trigger it.
         magmoms = None
     return PhonopyAtoms(numbers=atoms.get_atomic_numbers(),
                         masses=atoms.get_masses(),
-                        magmoms=magmoms,
+                        magnetic_moments=magmoms,
                         scaled_positions=atoms.get_scaled_positions(),
-                        cell=atoms.get_cell().array,
-                        pbc=atoms.get_pbc())
+                        cell=atoms.get_cell().array)
 
 
 def displacement_cart_to_evec(displ_cart,
@@ -100,3 +107,4 @@ def read_phbst_freqs_and_eigvecs(fname):
                 close()
     except Exception:
         raise
+

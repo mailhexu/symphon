@@ -1,3 +1,4 @@
+from . import _compat  # noqa: F401  (alias moved phonopy symbols before spgrep-modulation imports)
 try:
     from .irreps_anaddb import IrRepsAnaddb, IrRepsPhonopy, print_irreps, print_irreps_phonopy, find_highsym_qpoints_in_phbst
 except (ImportError, ModuleNotFoundError):
