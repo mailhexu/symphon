@@ -527,6 +527,7 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
         self._full_star_domain_table: List[dict] = []
         self._full_star_domain_table_computed = False
         self._irrep_backend_obj = None
+        self._bcs_labeling_error: Optional[str] = None
         self._chiral_transitions_map = {}
         self._spacegroup_number = None
         self._compute_chiral = False
@@ -603,11 +604,17 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             log_level=self._log_level,
             compute_heuristic_opds=True,
         )
-        self._irrep_backend_obj.run(kpname=kpname)
         self._irrep_labels_bcs = []
         self._irrep_opds_bcs = []
         self._irrep_opds_num_bcs = []
-        for irrep in self._irrep_backend_obj._irreps:
+        self._bcs_labeling_error = None
+        try:
+            self._irrep_backend_obj.run(kpname=kpname)
+        except ValueError as exc:
+            self._bcs_labeling_error = str(exc)
+            self._irrep_backend_obj._irreps = []
+
+        for irrep in getattr(self._irrep_backend_obj, "_irreps", []) or []:
             if isinstance(irrep, dict):
                 self._irrep_labels_bcs.append(irrep.get("label"))
                 self._irrep_opds_bcs.append(irrep.get("opd"))
@@ -617,10 +624,10 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
                 self._irrep_opds_bcs.append(getattr(irrep, "opd", None))
                 self._irrep_opds_num_bcs.append(getattr(irrep, "opd_num", None))
 
-        self._fill_gamma_bcs_labels_from_mulliken()
-
-        self._compute_primitive_opds()
-        self._compute_full_star_daughters()
+        if self._bcs_labeling_error is None:
+            self._fill_gamma_bcs_labels_from_mulliken()
+            self._compute_primitive_opds()
+            self._compute_full_star_daughters()
         if getattr(self, "_compute_chiral", False):
             self._compute_chiral_transitions()
         else:
@@ -1198,6 +1205,116 @@ class IrRepsEigen(IrReps, IrRepLabels, ReportingMixin):
             else:
                 disps[:, j*3:(j+1)*3] = eigvecs[:, j*3:(j+1)*3] / mass_factor
         return disps
+
+    @staticmethod
+    def _format_complex(value: complex, tol: float = 1e-8) -> str:
+        z = complex(value)
+        real = 0.0 if abs(z.real) < tol else z.real
+        imag = 0.0 if abs(z.imag) < tol else z.imag
+        if imag == 0.0:
+            return f"{real:.4g}"
+        if real == 0.0:
+            return f"{imag:.4g}j"
+        sign = "+" if imag >= 0 else "-"
+        return f"{real:.4g}{sign}{abs(imag):.4g}j"
+
+    @staticmethod
+    def _format_matrix(matrix) -> str:
+        arr = np.asarray(matrix)
+        return "[" + "; ".join(
+            "[" + ", ".join(str(int(x)) for x in row) + "]"
+            for row in arr
+        ) + "]"
+
+    @staticmethod
+    def _format_vector(vector) -> str:
+        arr = np.asarray(vector, dtype=float)
+        return "[" + ", ".join(f"{x:.6g}" for x in arr) + "]"
+
+    def get_little_group_operations(self) -> list[dict]:
+        operations = []
+        rotations = np.asarray(getattr(self, "_rotations_at_q", []), dtype=int)
+        translations = np.asarray(getattr(self, "_translations_at_q", []), dtype=float)
+        qpoint = np.asarray(self._qpoint, dtype=float)
+        for index, rotation in enumerate(rotations):
+            translation = translations[index] if index < len(translations) else np.zeros(3)
+            q_delta = qpoint @ rotation - qpoint
+            q_delta -= np.rint(q_delta)
+            operations.append({
+                "index": index + 1,
+                "determinant": int(round(np.linalg.det(rotation))),
+                "rotation": rotation.copy(),
+                "translation": np.asarray(translation, dtype=float).copy(),
+                "q_delta": q_delta,
+                "preserves_q": bool(np.allclose(q_delta, 0, atol=self._symprec)),
+            })
+        return operations
+
+    def get_phonon_symmetry_blocks(self) -> list[dict]:
+        blocks = []
+        labels = self.get_bcs_labels()
+        characters = np.asarray(getattr(self, "_characters", []), dtype=complex)
+        for block_index, degenerate_set in enumerate(getattr(self, "_degenerate_sets", [])):
+            modes = [int(i) for i in degenerate_set]
+            freqs = np.asarray([self._freqs[i] for i in modes], dtype=float)
+            block_labels = sorted({labels[i] for i in modes if i < len(labels) and labels[i]})
+            char_row = characters[block_index] if block_index < len(characters) else np.array([], dtype=complex)
+            blocks.append({
+                "block": block_index + 1,
+                "modes": modes,
+                "dimension": len(modes),
+                "frequency_min": float(np.min(freqs)),
+                "frequency_max": float(np.max(freqs)),
+                "bcs_label": "+".join(block_labels) if block_labels else "-",
+                "characters": char_row.copy(),
+            })
+        return blocks
+
+    def format_little_group_operations(self) -> str:
+        operations = self.get_little_group_operations()
+        blocks = self.get_phonon_symmetry_blocks()
+        backend = getattr(self, "_irrep_backend_obj", None)
+        q_bcs = getattr(backend, "_qpoint_bcs", None)
+        kpname = getattr(backend, "_bcs_kpname", None) or getattr(self, "_bcs_kpname", None)
+
+        lines = [
+            "# Little group at q-point",
+            f"# q_prim = {self._format_vector(self._qpoint)}",
+        ]
+        if q_bcs is not None:
+            label = kpname if kpname else "-"
+            lines.append(f"# q_BCS  = {self._format_vector(q_bcs)}  (BCS label: {label})")
+        if getattr(self, "_bcs_labeling_error", None):
+            lines.append(f"# BCS labeling: unavailable ({self._bcs_labeling_error})")
+        lines.append("# Time reversal: not included")
+        lines.append(f"# Little-group order: {len(operations)}")
+        lines.append("")
+        lines.append("Little-group operations:")
+        lines.append("op  det  preserves_q  rotation                         translation       q_delta")
+        for op in operations:
+            lines.append(
+                f"{op['index']:>2}  {op['determinant']:>+3d}  "
+                f"{str(op['preserves_q']):>10}  "
+                f"{self._format_matrix(op['rotation']):<32} "
+                f"{self._format_vector(op['translation']):<17} "
+                f"{self._format_vector(op['q_delta'])}"
+            )
+
+        lines.append("")
+        lines.append("Phonon symmetry blocks:")
+        lines.append("block  modes       dim  freq_THz          BCS       characters_by_operation")
+        for block in blocks:
+            modes = ",".join(str(i) for i in block["modes"])
+            if abs(block["frequency_max"] - block["frequency_min"]) < 1e-10:
+                freq_text = f"{block['frequency_min']:.6f}"
+            else:
+                freq_text = f"{block['frequency_min']:.6f}..{block['frequency_max']:.6f}"
+            chars = "[" + ", ".join(self._format_complex(x) for x in block["characters"]) + "]"
+            lines.append(
+                f"{block['block']:>5}  {modes:<10} {block['dimension']:>3}  "
+                f"{freq_text:<17} {block['bcs_label']:<9} {chars}"
+            )
+        return "\n".join(lines)
 
     def _get_labels_list(self, label_attr) -> List[Optional[str]]:
         # Helper to unpack degenerate labels

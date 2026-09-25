@@ -2,6 +2,7 @@ doc/refs/*.pdf
 Refs
 agent_files
 
+debug/
 uv.lock
 
 # Latex 

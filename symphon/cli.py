@@ -246,6 +246,18 @@ def parse_args_phonopy() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--qpoint",
+        nargs=3,
+        type=float,
+        metavar=("QX", "QY", "QZ"),
+        help="Analyze a single q-point in primitive reciprocal coordinates.",
+    )
+    parser.add_argument(
+        "--show-little-group",
+        action="store_true",
+        help="Print little-group operations and phonon block characters for --qpoint.",
+    )
+    parser.add_argument(
         "--verbose-file",
         type=str,
         default=None,
@@ -319,7 +331,43 @@ def main_phonopy() -> None:
         symprec=symprec,
         verbosity=args.log_level
     )
-    
+
+    if args.qpoint is not None:
+        qpoint = tuple(float(x) for x in args.qpoint)
+        irr = IrRepsPhonopy(
+            phonopy_params=args.phonopy_params,
+            qpoint=qpoint,
+            symprec=symprec,
+            degeneracy_tolerance=args.degeneracy_tolerance,
+            log_level=args.log_level,
+        )
+        irr._compute_chiral = args.chiral
+        irr.run(kpname=None)
+
+        print(f"Space group: {sg.name}")
+        print("# User q-point (Primitive coordinates)")
+        print(f"# k_prim = [{qpoint[0]:.4f}, {qpoint[1]:.4f}, {qpoint[2]:.4f}]")
+        print("=" * 60)
+        print(irr.format_summary_table(
+            include_symmetry=False,
+            include_qpoint_cols=False,
+            show_chiral=args.chiral,
+        ))
+        if args.show_little_group:
+            print()
+            print(irr.format_little_group_operations())
+
+        if args.show_verbose or args.verbose_file:
+            verbose_text = irr.get_verbose_output()
+            if args.verbose_file:
+                with open(args.verbose_file, "w", encoding="utf-8") as fh:
+                    fh.write(verbose_text)
+            elif args.show_verbose:
+                print()
+                print("# Verbose output")
+                print(verbose_text, end="")
+        return
+
     # Get all high-symmetry k-points from irrep package
     irrep_table = IrrepTable(sg.number_str, False, v=args.log_level)
     

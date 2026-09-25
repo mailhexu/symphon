@@ -184,7 +184,7 @@ symphon anaddb-irreps \
 
 ### phonopy-irreps
 
-Analyze phonon irreps from phonopy params/YAML files. **Always runs in auto-discovery mode**, automatically analyzing all high-symmetry k-points using the `irrep` backend.
+Analyze phonon irreps from phonopy params/YAML files. By default this runs in auto-discovery mode and analyzes all high-symmetry k-points using the `irrep` backend. You can also request one explicit primitive reciprocal q-point with `--qpoint`.
 
 #### Basic Usage
 
@@ -192,8 +192,8 @@ Analyze phonon irreps from phonopy params/YAML files. **Always runs in auto-disc
 # Automatically analyze all high-symmetry k-points
 symphon phonopy-irreps --params phonopy_params.yaml
 
-# Or using standalone command:
-phonopy-irreps --params phonopy_params.yaml
+# Analyze one primitive reciprocal q-point and print little-group data
+symphon phonopy-irreps --params phonopy_params.yaml --qpoint 0 0.5 0 --show-little-group
 ```
 
 #### With Options
@@ -241,10 +241,12 @@ This adds two columns to the output:
 - `-l`, `--is-little-cogroup`: Use little co-group setting
 - `-v`, `--log-level`: Verbosity level; 0=quiet, higher=more verbose (default: 0)
 - `--show-verbose`: Also print full verbose irreps output (phonopy-style)
+- `--qpoint QX QY QZ`: Analyze a single q-point in primitive reciprocal coordinates instead of auto-discovering all high-symmetry points
+- `--show-little-group`: With `--qpoint`, print little-group symmetry operations and per-degenerate-phonon-block characters
 - `--verbose-file`: If set, write verbose output to this file instead of stdout
 - `--chiral`: Show chiral transition information (OPD and daughter space groups)
 
-**Note**: The `phonopy-irreps` command automatically analyzes all high-symmetry k-points using the `irrep` backend. There is no `--qpoint` or `--backend` option - the analysis is fully automatic.
+**Note**: Without `--qpoint`, `phonopy-irreps` automatically analyzes all high-symmetry k-points using the `irrep` backend. The `--qpoint` mode is for explicit primitive reciprocal coordinates and can additionally report the little group with `--show-little-group`.
 
 ---
 

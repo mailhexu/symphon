@@ -68,6 +68,9 @@ All functionality is available through the unified `symphon` CLI:
 # Phonon irreps from phonopy (auto-discovers all high-symmetry k-points)
 symphon phonopy-irreps --params phonopy_params.yaml
 
+# One explicit primitive reciprocal q-point with little-group operations
+symphon phonopy-irreps --params phonopy_params.yaml --qpoint 0 0.5 0 --show-little-group
+
 # Phonon irreps from anaddb (auto-discovers high-symmetry q-points)
 symphon anaddb-irreps --phbst run_PHBST.nc
 
@@ -94,6 +97,15 @@ symphon phonopy-irreps --params phonopy_params.yaml
 # - Other points (M, R, X, etc.): BCS labels
 ```
 
+#### phonopy-irreps (Single q-point little group)
+
+```bash
+# Analyze one primitive reciprocal q-point and print little-group operations
+symphon phonopy-irreps --params phonopy_params.yaml --qpoint 0 0.5 0 --show-little-group
+```
+
+The little-group report lists the symmetry operations that preserve the selected q-point modulo a reciprocal lattice vector and prints characters for each degenerate phonon block.
+
 #### anaddb-irreps (Auto-discovery or manual mode)
 
 ```bash
@@ -111,7 +123,7 @@ symphon anaddb-irreps --phbst run_PHBST.nc --q-index 0
 
 ### Automatic high-symmetry analysis (phonopy-irreps)
 
-When you run `phonopy-irreps --params phonopy_params.yaml`, it automatically:
+When you run `symphon phonopy-irreps --params phonopy_params.yaml`, it automatically:
 1. Discovers all high-symmetry k-points from the space group
 2. Shows dual labels (Mulliken + BCS) at Gamma point with IR/Raman activity
 3. Shows BCS labels for other high-symmetry points

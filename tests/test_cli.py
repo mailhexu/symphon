@@ -35,6 +35,21 @@ def run_phonopy_irreps(yaml_file: Path) -> str:
     return result.stdout + result.stderr
 
 
+def run_phonopy_irreps_args(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from symphon.cli import main_phonopy; import sys; "
+            f"sys.argv = {['phonopy-irreps', *args]!r}; main_phonopy()",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT,
+        timeout=120,
+    )
+
+
 def get_reference_path(yaml_file: Path) -> Path:
     """Get reference file path for a YAML file."""
     rel_path = yaml_file.relative_to(EXAMPLES_DIR)
@@ -113,3 +128,56 @@ def test_phonopy_irreps_help():
     )
     assert result.returncode == 0
     assert "phonopy-irreps" in result.stdout or "usage:" in result.stdout.lower()
+
+
+def test_phonopy_irreps_qpoint_little_group_generic():
+    yaml_path = EXAMPLES_DIR / "2_basic_phonopy/BaTiO3_phonopy_params.yaml"
+    if not yaml_path.exists():
+        pytest.skip(f"Example file not found: {yaml_path}")
+
+    result = run_phonopy_irreps_args([
+        "--params", str(yaml_path),
+        "--qpoint", "0.123", "0.234", "0.345",
+        "--show-little-group",
+    ])
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "# Little group at q-point" in output
+    assert "# Little-group order: 1" in output
+    assert "BCS labeling: unavailable" in output
+    assert "Phonon symmetry blocks:" in output
+
+
+def test_phonopy_irreps_qpoint_little_group_gamma():
+    yaml_path = EXAMPLES_DIR / "2_basic_phonopy/BaTiO3_phonopy_params.yaml"
+    if not yaml_path.exists():
+        pytest.skip(f"Example file not found: {yaml_path}")
+
+    result = run_phonopy_irreps_args([
+        "--params", str(yaml_path),
+        "--qpoint", "0", "0", "0",
+        "--show-little-group",
+    ])
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "# Little group at q-point" in output
+    assert "# Little-group order: 48" in output
+    assert "Little-group operations:" in output
+    assert "Phonon symmetry blocks:" in output
+
+
+def test_phonopy_irreps_qpoint_little_group_non_gamma_preserves_q():
+    yaml_path = EXAMPLES_DIR / "2_basic_phonopy/BaTiO3_phonopy_params.yaml"
+    if not yaml_path.exists():
+        pytest.skip(f"Example file not found: {yaml_path}")
+
+    from symphon.irreps_anaddb import IrRepsPhonopy
+
+    irreps = IrRepsPhonopy(str(yaml_path), qpoint=[0, 0.5, 0])
+    irreps.run(kpname="X")
+    operations = irreps.get_little_group_operations()
+
+    assert len(operations) > 1
+    assert all(op["preserves_q"] for op in operations)

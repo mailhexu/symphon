@@ -56,7 +56,7 @@ This single command automatically analyzes **all** high-symmetry points!
 | **Auto k-point discovery** | ❌ No (need explicit index) | ✅ **Yes** (automatic!) |
 | **Dual labels at Gamma** | Optional flag | ✅ **Automatic** |
 | **Input file** | PHBST NetCDF | Phonopy YAML/params |
-| **k-point specification** | Index-based | Automatic discovery |
+| **k-point specification** | Index-based | Automatic discovery or explicit `--qpoint` |
 | **Best for** | ABINIT workflows | General phonopy use |
 | **CLI command** | `symphon anaddb-irreps` | `symphon phonopy-irreps` |
 
@@ -86,20 +86,23 @@ pip install "symphon[irrep,abipy]"
 
 The `phonopy-irreps` CLI has been redesigned for maximum simplicity:
 
-**Before (old):**
+**Earlier explicit-only workflow:**
 ```bash
-# Need to specify every detail
-phonopy-irreps --params file.yaml --qpoint 0 0 0 --both-labels
-phonopy-irreps --params file.yaml --qpoint 0.5 0.5 0 --backend irrep --kpname M
+# Manual label/backend selection was required for each point
+symphon phonopy-irreps --params file.yaml --qpoint 0 0 0 --both-labels
+symphon phonopy-irreps --params file.yaml --qpoint 0.5 0.5 0 --backend irrep --kpname M
 ```
 
 **Now (new):**
 ```bash
-# Just run it!
-phonopy-irreps --params file.yaml
+# Auto-discover all high-symmetry points
+symphon phonopy-irreps --params file.yaml
+
+# Or inspect one q-point's little group
+symphon phonopy-irreps --params file.yaml --qpoint 0 0.5 0 --show-little-group
 ```
 
-✨ Automatically discovers and analyzes **all** high-symmetry points with optimal settings!
+✨ Automatically discovers and analyzes **all** high-symmetry points with optimal settings, while still supporting explicit q-point little-group inspection when needed.
 
 ## See Also
 
